@@ -1,0 +1,32 @@
+# netlify.toml
+# RoundsPro — Netlify deployment config
+# Repo: github.com/CTorode/[your-repo-name]
+# Site: roundspronetlify.app
+
+[build]
+  # If you later add a build step (e.g. Vite/React), set:
+  #   command = "npm run build"
+  #   publish = "dist"
+  #
+  # For now (plain HTML), no build step needed:
+  publish = "."
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# ── Redirects ────────────────────────────────────────────────
+# Single-page app fallback (important once you add routing)
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200
+
+# ── Security Headers ─────────────────────────────────────────
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options        = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy        = "strict-origin-when-cross-origin"
+    # Once you add Supabase, tighten this CSP:
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' https://*.supabase.co; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.supabase.co wss://*.supabase.co; img-src 'self' data:;"

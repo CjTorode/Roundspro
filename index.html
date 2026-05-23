@@ -74,6 +74,12 @@
 // Config stored in localStorage: cjt_sbUrl / cjt_sbKey
 const USER_ID = '11ac215f-f91c-4973-a0db-86ba84ee0eba';
 
+// Generate a proper UUID v4
+function uuidv4(){
+  return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,c=>
+    (c^crypto.getRandomValues(new Uint8Array(1))[0]&15>>c/4).toString(16));
+}
+
 let _sbUrl = null;
 let _sbKey = null;
 
@@ -548,7 +554,7 @@ function checkWedCharge(){
     charged=true;
     return{...c,balance:parseFloat((c.balance-charge-g).toFixed(2))};
   });
-  if(charged){st.lastWedCharge=ts;st.payments=[...st.payments,{id:Date.now(),customerId:0,amount:0,date:ts,note:'Auto: Weekly magazines — Wednesday '+fd(ts)}];pa();}
+  if(charged){st.lastWedCharge=ts;st.payments=[...st.payments,{id:uuidv4(),customerId:0,amount:0,date:ts,note:'Auto: Weekly magazines — Wednesday '+fd(ts)}];pa();}
 }
 
 // Monthly magazines are included automatically in the 4-week cycle bill
@@ -1299,7 +1305,7 @@ function rModals(){
           st.customers=st.customers.map(function(c){return (c.listOrder||0)>afterOrder?{...c,listOrder:(c.listOrder||0)+1}:c;});
           newOrder=afterOrder+1;
         }
-        var newCust={...st.newCustomer,id:Date.now(),balance:0,listOrder:newOrder,paperLog:st.newCustomer.papers.map(function(p){return{title:p,action:'add',date:tod()};})};
+        var newCust={...st.newCustomer,id:uuidv4(),balance:0,listOrder:newOrder,paperLog:st.newCustomer.papers.map(function(p){return{title:p,action:'add',date:tod()};})};
         st.customers=[...st.customers,newCust];
         st.newCustomer={name:'',address:'',phone:'',email:'',papers:[],deliveryCharge:st.defaultDelivery,gstExempt:false,roundId:null,roundOrder:99,deliveryNote:'',holidays:[],startDate:''};
         st.newCustomerInsertAfter='end';
@@ -1336,7 +1342,7 @@ function rModals(){
         if(!st.newStock.title)return;
         const freq=st.newStock.type==='paper'?'daily':st.newStock.freq;
         const ddays=st.newStock.type==='paper'?st.newStock.deliveryDays||[1,2,3,4,5]:st.newStock.freq==='weekly'?[3]:[];
-        st.stock=[...st.stock,{...st.newStock,id:Date.now(),freq,deliveryDays:ddays,costPrice:parseFloat(st.newStock.costPrice)||0,sellPrice:parseFloat(st.newStock.sellPrice)||0,stock:parseInt(st.newStock.stock)||0}];
+        st.stock=[...st.stock,{...st.newStock,id:uuidv4(),freq,deliveryDays:ddays,costPrice:parseFloat(st.newStock.costPrice)||0,sellPrice:parseFloat(st.newStock.sellPrice)||0,stock:parseInt(st.newStock.stock)||0}];
         st.newStock={title:'',type:'paper',freq:'daily',deliveryDays:[1,2,3,4,5],costPrice:'',sellPrice:'',stock:'',gstApplicable:false};
         st.showAddStock=false;ps('stock');render();toast('✓ Title added');
       })
@@ -1388,7 +1394,7 @@ function rModals(){
       btn('b1 bf',{style:{marginBottom:'12px'}},'+ Record Price Change',()=>{
         const np=parseFloat(st.newPriceEntry);
         if(!np||!st.newPriceDate){alert('Please enter a price and date.');return;}
-        const entry={price:np,date:st.newPriceDate,id:Date.now()};
+        const entry={price:np,date:st.newPriceDate,id:uuidv4()};
         const newLog=[...(st.editStock.priceLog||[]),entry].sort((a,b)=>a.date.localeCompare(b.date));
         // Update current sellPrice if this is the latest entry
         const latest=newLog[newLog.length-1];
@@ -1429,7 +1435,7 @@ function rModals(){
       btn('b1 bf','Confirm Payment',()=>{
         const amt=parseFloat(st.paymentAmount);if(!amt)return;
         st.customers=st.customers.map(cu=>cu.id===c.id?{...cu,balance:parseFloat((cu.balance+amt).toFixed(2))}:cu);
-        st.payments=[...st.payments,{id:Date.now(),customerId:c.id,amount:amt,date:tod(),note:st.paymentNote}];
+        st.payments=[...st.payments,{id:uuidv4(),customerId:c.id,amount:amt,date:tod(),note:st.paymentNote}];
         st.showPayment=null;st.paymentAmount='';st.paymentNote='';pa();render();toast('✓ Payment of '+fmt(amt)+' recorded for '+c.name);
       })
     ),()=>{st.showPayment=null;render();}));
@@ -1627,7 +1633,7 @@ function rModals(){
       lbl('Area / Street'),h('input',{type:'text',className:'fi',value:st.newRound.area,oninput:e=>st.newRound.area=e.target.value,placeholder:'e.g. North End'}),
       btn('b1 bf','Save Round',()=>{
         if(!st.newRound.name)return;
-        st.rounds=[...st.rounds,{...st.newRound,id:Date.now()}];
+        st.rounds=[...st.rounds,{...st.newRound,id:uuidv4()}];
         st.newRound={name:'',area:''};st.showAddRound=false;ps('rounds');render();toast('✓ Round added');
       })
     ),()=>{st.showAddRound=false;render();}));

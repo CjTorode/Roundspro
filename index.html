@@ -1731,7 +1731,7 @@ function render(){
     }
     return fix;
   });
-  if(changed)ps('stock');
+  if(changed) S.set('stock', st.stock); // local only on startup
 })();
 
 checkWedCharge();

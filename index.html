@@ -68,7 +68,7 @@
 </head>
 <body>
 <div id="app"></div>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 // ── SUPABASE CONFIG ───────────────────────────────────────────────
 // Config is stored in localStorage under 'cjt_sbUrl' / 'cjt_sbKey'
@@ -79,7 +79,7 @@ let _sb = null; // Supabase client instance, set after config screen
 function getSB(){return _sb;}
 
 function initSupabase(url, key){
-  _sb = supabase.createClient(url, key);
+  _sb = (window.supabase || supabase).createClient(url, key);
   localStorage.setItem('cjt_sbUrl', url);
   localStorage.setItem('cjt_sbKey', key);
 }

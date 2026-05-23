@@ -68,20 +68,22 @@
 </head>
 <body>
 <div id="app"></div>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-// ── SUPABASE CONFIG ───────────────────────────────────────────────
-// Config is stored in localStorage under 'cjt_sbUrl' / 'cjt_sbKey'
-// User UUID is hard-coded here (from Supabase Auth or your known UUID)
+// ── SUPABASE CONFIG ─────────────────────────────────────────────
+// Pure fetch-based REST client — no external library needed
+// Config stored in localStorage: cjt_sbUrl / cjt_sbKey
 const USER_ID = '11ac215t-f91c-4973-a0db-86ba84eeeba';
 
-let _sb = null; // Supabase client instance, set after config screen
-function getSB(){return _sb;}
+let _sbUrl = null;
+let _sbKey = null;
+
+function getSB(){ return _sbUrl && _sbKey; }
 
 function initSupabase(url, key){
-  _sb = (window.supabase || supabase).createClient(url, key);
-  localStorage.setItem('cjt_sbUrl', url);
-  localStorage.setItem('cjt_sbKey', key);
+  _sbUrl = url.replace(/\/+$/, ''); // strip trailing slash
+  _sbKey = key;
+  localStorage.setItem('cjt_sbUrl', _sbUrl);
+  localStorage.setItem('cjt_sbKey', _sbKey);
 }
 
 // Try to auto-init from stored config
@@ -91,121 +93,138 @@ function initSupabase(url, key){
   if(url && key) initSupabase(url, key);
 })();
 
-// ── LOCAL STORAGE CACHE (unchanged API) ──────────────────────────
+// ── REST HELPERS ─────────────────────────────────────────────────
+async function sbFetch(method, table, body, params){
+  let url = _sbUrl + '/rest/v1/' + table;
+  if(params) url += '?' + params;
+  const res = await fetch(url, {
+    method,
+    headers: {
+      'apikey': _sbKey,
+      'Authorization': 'Bearer ' + _sbKey,
+      'Content-Type': 'application/json',
+      'Prefer': method === 'POST' ? 'resolution=merge-duplicates,return=minimal' : 'return=minimal'
+    },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  if(!res.ok){
+    const txt = await res.text();
+    throw new Error(res.status + ': ' + txt);
+  }
+  const txt = await res.text();
+  return txt ? JSON.parse(txt) : [];
+}
+
+async function sbSelect(table, filter){
+  return await sbFetch('GET', table, null, 'user_id=eq.' + USER_ID + (filter||'') + '&limit=1000');
+}
+
+async function sbUpsert(table, rows){
+  if(!rows.length) return;
+  await sbFetch('POST', table, rows);
+}
+
+async function sbDelete(table, id){
+  await sbFetch('DELETE', table, null, 'id=eq.' + id + '&user_id=eq.' + USER_ID);
+}
+
+// ── LOCAL STORAGE CACHE ──────────────────────────────────────────
 const S={get:(k,fb)=>{try{const v=localStorage.getItem('cjt_'+k);return v?JSON.parse(v):fb}catch{return fb}},set:(k,v)=>{try{localStorage.setItem('cjt_'+k,JSON.stringify(v))}catch{}}};
 
 // ── SUPABASE DATA LAYER ───────────────────────────────────────────
-// DB.save(table, data) — upserts to Supabase AND localStorage cache
-// DB.load()           — fetches all tables and updates st + localStorage
-// DB.deleteRow(table, id) — deletes a row by id
-
 const DB = {
-  // Scalar settings stored as key/value rows in 'settings' table
   SETTINGS_KEYS: ['gstRate','gstEnabled','gstNumber','defaultDelivery','showCostPrice',
     'calEvents','billingStart','billingPeriod','bizDetails','lastWedCharge','billStyle'],
 
   async saveCustomers(){
     if(!getSB()) return;
-    const rows = st.customers.map(c => ({...c, user_id: USER_ID}));
-    const {error} = await getSB().from('customers').upsert(rows, {onConflict:'id'});
-    if(error) console.warn('customers upsert:', error.message);
+    try {
+      const rows = st.customers.map(c => ({...c, user_id: USER_ID}));
+      await sbUpsert('customers', rows);
+    } catch(e){ console.warn('saveCustomers:', e.message); }
     S.set('customers', st.customers);
   },
 
   async deleteCustomer(id){
     S.set('customers', st.customers);
     if(!getSB()) return;
-    await getSB().from('customers').delete().eq('id', id).eq('user_id', USER_ID);
+    try { await sbDelete('customers', id); } catch(e){ console.warn('deleteCustomer:', e.message); }
   },
 
   async saveStock(){
     if(!getSB()) return;
-    const rows = st.stock.map(s => ({...s, user_id: USER_ID}));
-    const {error} = await getSB().from('stock').upsert(rows, {onConflict:'id'});
-    if(error) console.warn('stock upsert:', error.message);
+    try {
+      const rows = st.stock.map(s => ({...s, user_id: USER_ID}));
+      await sbUpsert('stock', rows);
+    } catch(e){ console.warn('saveStock:', e.message); }
     S.set('stock', st.stock);
   },
 
   async deleteStock(id){
     S.set('stock', st.stock);
     if(!getSB()) return;
-    await getSB().from('stock').delete().eq('id', id).eq('user_id', USER_ID);
+    try { await sbDelete('stock', id); } catch(e){ console.warn('deleteStock:', e.message); }
   },
 
   async saveRounds(){
     if(!getSB()) return;
-    const rows = st.rounds.map(r => ({...r, user_id: USER_ID}));
-    const {error} = await getSB().from('rounds').upsert(rows, {onConflict:'id'});
-    if(error) console.warn('rounds upsert:', error.message);
+    try {
+      const rows = st.rounds.map(r => ({...r, user_id: USER_ID}));
+      await sbUpsert('rounds', rows);
+    } catch(e){ console.warn('saveRounds:', e.message); }
     S.set('rounds', st.rounds);
   },
 
   async savePayments(){
     if(!getSB()) return;
-    // Only upsert new payments (those not yet in DB) — we track by id
-    const rows = st.payments.map(p => ({...p, user_id: USER_ID}));
-    const {error} = await getSB().from('payments').upsert(rows, {onConflict:'id'});
-    if(error) console.warn('payments upsert:', error.message);
+    try {
+      const rows = st.payments.map(p => ({...p, user_id: USER_ID}));
+      await sbUpsert('payments', rows);
+    } catch(e){ console.warn('savePayments:', e.message); }
     S.set('payments', st.payments);
   },
 
   async saveSettings(){
     if(!getSB()) return;
-    const rows = DB.SETTINGS_KEYS.map(k => ({
-      user_id: USER_ID,
-      key: k,
-      value: JSON.stringify(st[k])
-    }));
-    const {error} = await getSB().from('settings').upsert(rows, {onConflict:'user_id,key'});
-    if(error) console.warn('settings upsert:', error.message);
-    // also persist locally
+    try {
+      const rows = DB.SETTINGS_KEYS.map(k => ({
+        user_id: USER_ID,
+        key: k,
+        value: JSON.stringify(st[k])
+      }));
+      await sbUpsert('settings', rows);
+    } catch(e){ console.warn('saveSettings:', e.message); }
     DB.SETTINGS_KEYS.forEach(k => S.set(k, st[k]));
   },
 
   async load(){
-    if(!getSB()){
-      // No Supabase — use localStorage only, already loaded into st
-      return;
-    }
+    if(!getSB()) return;
     try {
-      const [custRes, stockRes, roundsRes, payRes, setRes] = await Promise.all([
-        getSB().from('customers').select('*').eq('user_id', USER_ID),
-        getSB().from('stock').select('*').eq('user_id', USER_ID),
-        getSB().from('rounds').select('*').eq('user_id', USER_ID),
-        getSB().from('payments').select('*').eq('user_id', USER_ID),
-        getSB().from('settings').select('*').eq('user_id', USER_ID)
+      const [custs, stocks, rounds, pays, settings] = await Promise.all([
+        sbSelect('customers'),
+        sbSelect('stock'),
+        sbSelect('rounds'),
+        sbSelect('payments'),
+        sbSelect('settings')
       ]);
-
-      if(custRes.data && custRes.data.length){
-        st.customers = custRes.data.map(r => { delete r.user_id; return r; });
-        S.set('customers', st.customers);
-      }
-      if(stockRes.data && stockRes.data.length){
-        st.stock = stockRes.data.map(r => { delete r.user_id; return r; });
-        S.set('stock', st.stock);
-      }
-      if(roundsRes.data && roundsRes.data.length){
-        st.rounds = roundsRes.data.map(r => { delete r.user_id; return r; });
-        S.set('rounds', st.rounds);
-      }
-      if(payRes.data && payRes.data.length){
-        st.payments = payRes.data.map(r => { delete r.user_id; return r; });
-        S.set('payments', st.payments);
-      }
-      if(setRes.data){
-        setRes.data.forEach(row => {
-          try {
-            const val = JSON.parse(row.value);
-            if(DB.SETTINGS_KEYS.includes(row.key)) st[row.key] = val;
-            S.set(row.key, val);
-          } catch(e){}
+      if(custs && custs.length){ st.customers = custs.map(r=>{delete r.user_id;return r;}); S.set('customers',st.customers); }
+      if(stocks && stocks.length){ st.stock = stocks.map(r=>{delete r.user_id;return r;}); S.set('stock',st.stock); }
+      if(rounds && rounds.length){ st.rounds = rounds.map(r=>{delete r.user_id;return r;}); S.set('rounds',st.rounds); }
+      if(pays && pays.length){ st.payments = pays.map(r=>{delete r.user_id;return r;}); S.set('payments',st.payments); }
+      if(settings){
+        settings.forEach(row=>{
+          try{
+            const val=JSON.parse(row.value);
+            if(DB.SETTINGS_KEYS.includes(row.key)) st[row.key]=val;
+            S.set(row.key,val);
+          }catch(e){}
         });
       }
       render();
       toast('☁ Synced from Supabase');
     } catch(e){
-      console.warn('Supabase load error:', e);
-      toast('⚠ Supabase sync failed — working offline');
+      console.warn('DB.load error:', e);
+      toast('⚠ Sync failed: ' + e.message);
     }
   }
 };
@@ -250,9 +269,8 @@ function showSetupScreen(){
     this.textContent = 'Connecting…';
     this.disabled = true;
     try {
-      // Test the connection
-      const {error} = await getSB().from('settings').select('key').eq('user_id', USER_ID).limit(1);
-      if(error) throw error;
+      // Test the connection with a simple REST call
+      await sbSelect('settings');
       startApp();
     } catch(e){
       showSetupErr('Connection failed: ' + (e.message || 'Check your URL and key.'));

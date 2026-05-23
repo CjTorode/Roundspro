@@ -139,7 +139,7 @@ const DB = {
   async saveCustomers(){
     if(!getSB()) return;
     try {
-      const rows = st.customers.map(c => ({...c, user_id: USER_ID}));
+      const rows = st.customers.map(c => { const {user_id, ...rest} = c; return {...rest, user_id: USER_ID}; });
       await sbUpsert('customers', rows);
     } catch(e){ console.warn('saveCustomers:', e.message); }
     S.set('customers', st.customers);
@@ -154,7 +154,7 @@ const DB = {
   async saveStock(){
     if(!getSB()) return;
     try {
-      const rows = st.stock.map(s => ({...s, user_id: USER_ID}));
+      const rows = st.stock.map(s => { const {user_id, ...rest} = s; return {...rest, user_id: USER_ID}; });
       await sbUpsert('stock', rows);
     } catch(e){ console.warn('saveStock:', e.message); }
     S.set('stock', st.stock);
@@ -169,7 +169,7 @@ const DB = {
   async saveRounds(){
     if(!getSB()) return;
     try {
-      const rows = st.rounds.map(r => ({...r, user_id: USER_ID}));
+      const rows = st.rounds.map(r => { const {user_id, ...rest} = r; return {...rest, user_id: USER_ID}; });
       await sbUpsert('rounds', rows);
     } catch(e){ console.warn('saveRounds:', e.message); }
     S.set('rounds', st.rounds);
@@ -178,7 +178,7 @@ const DB = {
   async savePayments(){
     if(!getSB()) return;
     try {
-      const rows = st.payments.map(p => ({...p, user_id: USER_ID}));
+      const rows = st.payments.map(p => { const {user_id, ...rest} = p; return {...rest, user_id: USER_ID}; });
       await sbUpsert('payments', rows);
     } catch(e){ console.warn('savePayments:', e.message); }
     S.set('payments', st.payments);

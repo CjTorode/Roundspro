@@ -68,8 +68,211 @@
 </head>
 <body>
 <div id="app"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
+// ── SUPABASE CONFIG ───────────────────────────────────────────────
+// Config is stored in localStorage under 'cjt_sbUrl' / 'cjt_sbKey'
+// User UUID is hard-coded here (from Supabase Auth or your known UUID)
+const USER_ID = '11ac215t-f91c-4973-a0db-86ba84eeeba';
+
+let _sb = null; // Supabase client instance, set after config screen
+function getSB(){return _sb;}
+
+function initSupabase(url, key){
+  _sb = supabase.createClient(url, key);
+  localStorage.setItem('cjt_sbUrl', url);
+  localStorage.setItem('cjt_sbKey', key);
+}
+
+// Try to auto-init from stored config
+(function(){
+  const url = localStorage.getItem('cjt_sbUrl');
+  const key = localStorage.getItem('cjt_sbKey');
+  if(url && key) initSupabase(url, key);
+})();
+
+// ── LOCAL STORAGE CACHE (unchanged API) ──────────────────────────
 const S={get:(k,fb)=>{try{const v=localStorage.getItem('cjt_'+k);return v?JSON.parse(v):fb}catch{return fb}},set:(k,v)=>{try{localStorage.setItem('cjt_'+k,JSON.stringify(v))}catch{}}};
+
+// ── SUPABASE DATA LAYER ───────────────────────────────────────────
+// DB.save(table, data) — upserts to Supabase AND localStorage cache
+// DB.load()           — fetches all tables and updates st + localStorage
+// DB.deleteRow(table, id) — deletes a row by id
+
+const DB = {
+  // Scalar settings stored as key/value rows in 'settings' table
+  SETTINGS_KEYS: ['gstRate','gstEnabled','gstNumber','defaultDelivery','showCostPrice',
+    'calEvents','billingStart','billingPeriod','bizDetails','lastWedCharge','billStyle'],
+
+  async saveCustomers(){
+    if(!getSB()) return;
+    const rows = st.customers.map(c => ({...c, user_id: USER_ID}));
+    const {error} = await getSB().from('customers').upsert(rows, {onConflict:'id'});
+    if(error) console.warn('customers upsert:', error.message);
+    S.set('customers', st.customers);
+  },
+
+  async deleteCustomer(id){
+    S.set('customers', st.customers);
+    if(!getSB()) return;
+    await getSB().from('customers').delete().eq('id', id).eq('user_id', USER_ID);
+  },
+
+  async saveStock(){
+    if(!getSB()) return;
+    const rows = st.stock.map(s => ({...s, user_id: USER_ID}));
+    const {error} = await getSB().from('stock').upsert(rows, {onConflict:'id'});
+    if(error) console.warn('stock upsert:', error.message);
+    S.set('stock', st.stock);
+  },
+
+  async deleteStock(id){
+    S.set('stock', st.stock);
+    if(!getSB()) return;
+    await getSB().from('stock').delete().eq('id', id).eq('user_id', USER_ID);
+  },
+
+  async saveRounds(){
+    if(!getSB()) return;
+    const rows = st.rounds.map(r => ({...r, user_id: USER_ID}));
+    const {error} = await getSB().from('rounds').upsert(rows, {onConflict:'id'});
+    if(error) console.warn('rounds upsert:', error.message);
+    S.set('rounds', st.rounds);
+  },
+
+  async savePayments(){
+    if(!getSB()) return;
+    // Only upsert new payments (those not yet in DB) — we track by id
+    const rows = st.payments.map(p => ({...p, user_id: USER_ID}));
+    const {error} = await getSB().from('payments').upsert(rows, {onConflict:'id'});
+    if(error) console.warn('payments upsert:', error.message);
+    S.set('payments', st.payments);
+  },
+
+  async saveSettings(){
+    if(!getSB()) return;
+    const rows = DB.SETTINGS_KEYS.map(k => ({
+      user_id: USER_ID,
+      key: k,
+      value: JSON.stringify(st[k])
+    }));
+    const {error} = await getSB().from('settings').upsert(rows, {onConflict:'user_id,key'});
+    if(error) console.warn('settings upsert:', error.message);
+    // also persist locally
+    DB.SETTINGS_KEYS.forEach(k => S.set(k, st[k]));
+  },
+
+  async load(){
+    if(!getSB()){
+      // No Supabase — use localStorage only, already loaded into st
+      return;
+    }
+    try {
+      const [custRes, stockRes, roundsRes, payRes, setRes] = await Promise.all([
+        getSB().from('customers').select('*').eq('user_id', USER_ID),
+        getSB().from('stock').select('*').eq('user_id', USER_ID),
+        getSB().from('rounds').select('*').eq('user_id', USER_ID),
+        getSB().from('payments').select('*').eq('user_id', USER_ID),
+        getSB().from('settings').select('*').eq('user_id', USER_ID)
+      ]);
+
+      if(custRes.data && custRes.data.length){
+        st.customers = custRes.data.map(r => { delete r.user_id; return r; });
+        S.set('customers', st.customers);
+      }
+      if(stockRes.data && stockRes.data.length){
+        st.stock = stockRes.data.map(r => { delete r.user_id; return r; });
+        S.set('stock', st.stock);
+      }
+      if(roundsRes.data && roundsRes.data.length){
+        st.rounds = roundsRes.data.map(r => { delete r.user_id; return r; });
+        S.set('rounds', st.rounds);
+      }
+      if(payRes.data && payRes.data.length){
+        st.payments = payRes.data.map(r => { delete r.user_id; return r; });
+        S.set('payments', st.payments);
+      }
+      if(setRes.data){
+        setRes.data.forEach(row => {
+          try {
+            const val = JSON.parse(row.value);
+            if(DB.SETTINGS_KEYS.includes(row.key)) st[row.key] = val;
+            S.set(row.key, val);
+          } catch(e){}
+        });
+      }
+      render();
+      toast('☁ Synced from Supabase');
+    } catch(e){
+      console.warn('Supabase load error:', e);
+      toast('⚠ Supabase sync failed — working offline');
+    }
+  }
+};
+
+// ── SETUP SCREEN ─────────────────────────────────────────────────
+function showSetupScreen(){
+  const app = document.getElementById('app');
+  const stored_url = localStorage.getItem('cjt_sbUrl') || '';
+  const stored_key = localStorage.getItem('cjt_sbKey') || '';
+  app.innerHTML = '';
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'min-height:100vh;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:24px;font-family:Georgia,serif';
+  wrap.innerHTML = `
+    <div style="background:#fff;border:2px solid var(--gold);border-radius:6px;padding:36px;width:500px;max-width:100%;box-shadow:0 8px 40px rgba(0,0,0,.15)">
+      <div style="text-align:center;margin-bottom:24px">
+        <div style="font-size:36px;margin-bottom:8px">🗞</div>
+        <div style="font-size:20px;font-weight:bold;letter-spacing:1px;color:#1a1a1a">ROUNDSPRO</div>
+        <div style="font-size:11px;letter-spacing:3px;color:#aaa;text-transform:uppercase;margin-bottom:4px">Supabase Setup</div>
+        <div style="font-size:13px;color:#666;margin-top:10px">Connect your Supabase project to enable cloud sync across devices.</div>
+      </div>
+      <div id="setup-err" style="display:none;background:#fff3f3;border:1px solid #e08080;border-radius:4px;padding:10px 14px;font-size:13px;color:#b94040;margin-bottom:14px"></div>
+      <label style="display:block;font-size:12px;font-weight:bold;text-transform:uppercase;letter-spacing:.5px;color:#555;margin-bottom:4px">Supabase Project URL</label>
+      <input id="sb-url" type="url" style="width:100%;padding:9px 12px;border:1px solid #ccc;border-radius:3px;font-size:14px;background:#fafafa;margin-bottom:12px;font-family:Georgia,serif" placeholder="https://xxxx.supabase.co" value="${stored_url}"/>
+      <label style="display:block;font-size:12px;font-weight:bold;text-transform:uppercase;letter-spacing:.5px;color:#555;margin-bottom:4px">Supabase Anon Key</label>
+      <input id="sb-key" type="password" style="width:100%;padding:9px 12px;border:1px solid #ccc;border-radius:3px;font-size:14px;background:#fafafa;margin-bottom:18px;font-family:Georgia,serif" placeholder="eyJ..." value="${stored_key}"/>
+      <button id="sb-save" style="width:100%;background:#1a1a1a;color:#c8a84b;border:none;padding:12px;border-radius:3px;font-size:14px;font-weight:bold;cursor:pointer;font-family:Georgia,serif;letter-spacing:.5px">Connect & Load Data ☁</button>
+      <div style="text-align:center;margin-top:14px">
+        <button id="sb-skip" style="background:none;border:none;color:#888;font-size:12px;cursor:pointer;font-family:Georgia,serif;text-decoration:underline">Use offline (localStorage only)</button>
+      </div>
+      <div style="margin-top:20px;padding:12px 14px;background:#f5f0e8;border:1px solid #c8a84b;border-radius:4px;font-size:12px;color:#666;line-height:1.6">
+        <strong>Where to find these:</strong><br/>
+        Supabase dashboard → Settings → API → Project URL &amp; anon/public key
+      </div>
+    </div>
+  `;
+  app.appendChild(wrap);
+  document.getElementById('sb-save').onclick = async function(){
+    const url = document.getElementById('sb-url').value.trim();
+    const key = document.getElementById('sb-key').value.trim();
+    if(!url || !key){ showSetupErr('Please enter both the Project URL and Anon Key.'); return; }
+    initSupabase(url, key);
+    this.textContent = 'Connecting…';
+    this.disabled = true;
+    try {
+      // Test the connection
+      const {error} = await getSB().from('settings').select('key').eq('user_id', USER_ID).limit(1);
+      if(error) throw error;
+      startApp();
+    } catch(e){
+      showSetupErr('Connection failed: ' + (e.message || 'Check your URL and key.'));
+      this.textContent = 'Connect & Load Data ☁';
+      this.disabled = false;
+    }
+  };
+  document.getElementById('sb-skip').onclick = function(){ startApp(); };
+}
+
+function showSetupErr(msg){
+  const el = document.getElementById('setup-err');
+  if(el){ el.textContent = msg; el.style.display = 'block'; }
+}
+
+async function startApp(){
+  render(); // Show app immediately from localStorage
+  await DB.load(); // Then sync from Supabase (re-renders on success)
+}
+
 const IR=[{id:1,name:'Elm Street Area',area:'North Side'},{id:2,name:'Maple Road Area',area:'South Side'}];
 const IC=[
   {id:1,name:'Margaret Thompson',address:'14 Elm Street',phone:'07712 345678',papers:['Daily Mail','Radio Times'],balance:-4.50,deliveryCharge:.5,gstExempt:false,roundId:1,roundOrder:1,deliveryNote:'',holidays:[]},
@@ -139,8 +342,30 @@ const st={
   newStock:{title:'',type:'paper',freq:'daily',deliveryDays:[1,2,3,4,5],costPrice:'',sellPrice:'',stock:'',gstApplicable:false},
   newRound:{name:'',area:''},paymentAmount:'',paymentNote:'',showPaperLog:null,paperChangeDate:'',paperChangeTitle:'',paperChangeAction:'add',newPriceEntry:'',newPriceDate:'',newCustomerInsertAfter:'end',
 };
-function ps(k){S.set(k,st[k]);}
-function pa(){['customers','stock','rounds','payments','gstRate','gstEnabled','gstNumber','defaultDelivery','showCostPrice','calEvents','billingStart','billingPeriod','bizDetails','lastWedCharge'].forEach(ps);}
+// ps(k) — persist a single key. Routes to Supabase for relational data, settings table for scalars.
+function ps(k){
+  S.set(k,st[k]); // always keep local cache in sync
+  switch(k){
+    case 'customers':   DB.saveCustomers(); break;
+    case 'stock':       DB.saveStock();     break;
+    case 'rounds':      DB.saveRounds();    break;
+    case 'payments':    DB.savePayments();  break;
+    default:
+      // scalar setting — debounce settings save
+      clearTimeout(ps._t);
+      ps._t = setTimeout(()=>DB.saveSettings(), 800);
+  }
+}
+// pa() — persist all
+function pa(){
+  ['customers','stock','rounds','payments'].forEach(k=>S.set(k,st[k]));
+  DB.SETTINGS_KEYS.forEach(k=>S.set(k,st[k]));
+  DB.saveCustomers();
+  DB.saveStock();
+  DB.saveRounds();
+  DB.savePayments();
+  DB.saveSettings();
+}
 const fmt=v=>'£'+Math.abs(v).toFixed(2);
 const tod=()=>new Date().toISOString().split('T')[0];
 const fd=d=>new Date(d).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
@@ -193,61 +418,90 @@ function priceOnDate(item, dateStr){
 function calcBill(c,start,days){
   const gst=st.gstEnabled?st.gstRate:0;
   const hd=start?holDays(c,start,days):0;
-  const allDelivDays=[...new Set([].concat.apply([],c.papers.map(function(p){const it=st.stock.find(function(s){return s.title===p;});return(it&&it.freq==='daily'&&it.deliveryDays)||[];})))];
+
+  // Get all titles that were active at any point during the cycle
+  var titlesInCycle=new Set();
+  if(start&&(c.paperLog||[]).length){
+    var cycleEnd=new Date(start);cycleEnd.setDate(cycleEnd.getDate()+days-1);
+    var cycleEndStr=cycleEnd.toISOString().split('T')[0];
+    // Any title added on or before cycle end
+    c.paperLog.forEach(function(e){if(e.action==='add'&&e.date<=cycleEndStr)titlesInCycle.add(e.title);});
+  } else {
+    // No log — use current papers
+    (c.papers||[]).forEach(function(p){titlesInCycle.add(p);});
+  }
+
+  // Calculate delivery days — days customer received anything
+  var allDelivDays=[...new Set([].concat.apply([],[...titlesInCycle].map(function(p){
+    const it=st.stock.find(function(s){return s.title===p;});
+    return(it&&it.freq==='daily'&&it.deliveryDays)||[];
+  })))];
+  if(!allDelivDays.length)allDelivDays=[...new Set([].concat.apply([],c.papers.map(function(p){
+    const it=st.stock.find(function(s){return s.title===p;});
+    return(it&&it.freq==='daily'&&it.deliveryDays)||[];
+  })))];
   const cd=start?countDeliveryDays(c,start,days,allDelivDays.length?allDelivDays:[1,2,3,4,5,6,0]):Math.max(0,days-hd);
 
-  const lines=c.papers.map(function(title){
+  const lines=[...titlesInCycle].map(function(title){
     const item=st.stock.find(function(s){return s.title===title;});if(!item)return null;
     let d2,lbl,priceChanged=false,blendedTotal=0;
 
     if(item.freq==='weekly'){
-      const weds=start?countDeliveryDays(c,start,days,item.deliveryDays||[3]):Math.floor(days/7);
-      d2=weds;lbl=weds+' week'+(weds!==1?'s':'');
-      if(start&&(item.priceLog||[]).length){
-        blendedTotal=0;
+      // Count Wednesdays where paper was active
+      if(start){
+        d2=0;blendedTotal=0;
         for(var i=0;i<days;i++){
           var dd=new Date(start);dd.setDate(dd.getDate()+i);
           var ds=dd.toISOString().split('T')[0];
           if((item.deliveryDays||[3]).indexOf(dd.getDay())>=0&&!onHoliday(c,ds)){
-            blendedTotal+=priceOnDate(item,ds);
+            var activeThen=papersOnDate(c,ds);
+            if(activeThen.indexOf(title)>=0){
+              d2++;blendedTotal+=priceOnDate(item,ds);
+            }
           }
         }
-        var avgPrice=d2>0?blendedTotal/d2:item.sellPrice;
-        priceChanged=(item.priceLog||[]).some(function(e){return e.date>=start&&e.date<=new Date(start).toISOString().split('T')[0];});
-        const ga=(!c.gstExempt&&item.gstApplicable)?blendedTotal*(gst/100):0;
-        return{title,unitPrice:avgPrice,freq:item.freq,deliveryDays:item.deliveryDays,days:d2,label:lbl,lineTotal:blendedTotal,gstAmt:ga,priceChanged};
+      } else {
+        d2=Math.floor(days/7);blendedTotal=item.sellPrice*d2;
       }
-      // No priceLog — use standard calculation
-      const lt=item.sellPrice*d2;
-      const ga=(!c.gstExempt&&item.gstApplicable)?lt*(gst/100):0;
-      return{title,unitPrice:item.sellPrice,freq:item.freq,deliveryDays:item.deliveryDays,days:d2,label:lbl,lineTotal:lt,gstAmt:ga,priceChanged:false};
+      lbl=d2+' week'+(d2!==1?'s':'');
+      const ga=(!c.gstExempt&&item.gstApplicable)?blendedTotal*(gst/100):0;
+      return{title,unitPrice:d2>0?blendedTotal/d2:item.sellPrice,freq:item.freq,deliveryDays:item.deliveryDays,days:d2,label:lbl,lineTotal:blendedTotal,gstAmt:ga,priceChanged:false};
+
     } else if(item.freq==='monthly'){
-      // Monthly mags charged once per cycle as part of the bill
+      // Monthly — only charge if active at start of cycle
+      if(start){
+        var activeAtStart=papersOnDate(c,start);
+        if(activeAtStart.indexOf(title)<0)return null;
+      }
       d2=1;lbl='1 issue';
+      const unitPrice=priceOnDate(item,start||tod());
+      const lt=unitPrice*d2;
+      const ga=(!c.gstExempt&&item.gstApplicable)?lt*(gst/100):0;
+      return{title,unitPrice,freq:item.freq,deliveryDays:item.deliveryDays,days:d2,label:lbl,lineTotal:lt,gstAmt:ga,priceChanged:false};
+
     } else {
+      // Daily paper — count days it was active
       const ddays=item.deliveryDays||[1,2,3,4,5];
-      d2=start?countDeliveryDays(c,start,days,ddays):Math.round(days*(ddays.length/7));
-      lbl=d2+' issue'+(d2!==1?'s':'');
-      // Day-by-day price calculation
-      if(start&&(item.priceLog||[]).length){
-        blendedTotal=0;
+      if(start){
+        d2=0;blendedTotal=0;
         for(var i=0;i<days;i++){
           var dd=new Date(start);dd.setDate(dd.getDate()+i);
           var ds=dd.toISOString().split('T')[0];
           if(ddays.indexOf(dd.getDay())>=0&&!onHoliday(c,ds)){
-            blendedTotal+=priceOnDate(item,ds);
+            var activeThen=papersOnDate(c,ds);
+            if(activeThen.indexOf(title)>=0){
+              d2++;blendedTotal+=priceOnDate(item,ds);
+            }
           }
         }
-        priceChanged=(item.priceLog||[]).some(function(e){return e.date>=start;});
-        const ga=(!c.gstExempt&&item.gstApplicable)?blendedTotal*(gst/100):0;
-        return{title,unitPrice:d2>0?blendedTotal/d2:item.sellPrice,freq:item.freq,deliveryDays:item.deliveryDays,days:d2,label:lbl,lineTotal:blendedTotal,gstAmt:ga,priceChanged};
+      } else {
+        d2=Math.round(days*(ddays.length/7));blendedTotal=item.sellPrice*d2;
       }
+      lbl=d2+' issue'+(d2!==1?'s':'');
+      if(d2===0)return null;
+      const ga=(!c.gstExempt&&item.gstApplicable)?blendedTotal*(gst/100):0;
+      return{title,unitPrice:d2>0?blendedTotal/d2:item.sellPrice,freq:item.freq,deliveryDays:item.deliveryDays,days:d2,label:lbl,lineTotal:blendedTotal,gstAmt:ga,priceChanged:false};
     }
-
-    const unitPrice=start?priceOnDate(item,start):item.sellPrice;
-    const lt=unitPrice*d2;
-    const ga=(!c.gstExempt&&item.gstApplicable)?lt*(gst/100):0;
-    return{title,unitPrice,freq:item.freq,deliveryDays:item.deliveryDays,days:d2,label:lbl,lineTotal:lt,gstAmt:ga,priceChanged:false};
   }).filter(Boolean);
 
   const pt=lines.reduce(function(s,l){return s+l.lineTotal;},0);
@@ -643,7 +897,7 @@ function rCustomers(){
               btn('b3','✏ Edit',()=>{st.showEditCustomer={...c};render();}),
               btn('b4','🏖 Holiday',()=>{st.showHoliday=c.id;render();}),
               btn('b3','📋 Papers',()=>{st.showPaperLog=c.id;st.paperChangeDate=tod();st.paperChangeTitle=(st.stock[0]&&st.stock[0].title)||'';st.paperChangeAction='add';render();}),
-              btn('b6','🗑',()=>{if(confirm('Delete '+c.name+'?\n\nThis cannot be undone.')){st.customers=st.customers.filter(x=>x.id!==c.id);ps('customers');render();toast('✓ '+c.name+' deleted');}})
+              btn('b6','🗑',()=>{if(confirm('Delete '+c.name+'?\n\nThis cannot be undone.')){const delId=c.id;st.customers=st.customers.filter(x=>x.id!==c.id);S.set('customers',st.customers);DB.deleteCustomer(delId);render();toast('✓ '+c.name+' deleted');}})
             )
           )
         );
@@ -1144,7 +1398,7 @@ function rModals(){
 
       h('div',{style:{display:'flex',gap:'8px'}},
         btn('b1',{style:{flex:'1'}},'Save Changes',()=>{st.stock=st.stock.map(s=>s.id===es.id?es:s);st.editStock=null;st.newPriceEntry='';st.newPriceDate='';ps('stock');render();toast('✓ Saved');}),
-        btn('b6','🗑 Delete',()=>{if(confirm('Delete "'+es.title+'"?')){st.stock=st.stock.filter(s=>s.id!==es.id);st.editStock=null;ps('stock');render();}})
+        btn('b6','🗑 Delete',()=>{if(confirm('Delete "'+es.title+'"?')){const delId=es.id;st.stock=st.stock.filter(s=>s.id!==es.id);st.editStock=null;S.set('stock',st.stock);DB.deleteStock(delId);render();}})
       )
     ),()=>{st.editStock=null;render();}));
   }
@@ -1399,6 +1653,19 @@ function rModals(){
           ps('stock');render();toast('✓ Added '+toAdd.length+' new title'+(toAdd.length!==1?'s':''));
         }),
         h('div',{style:{fontSize:'12px',color:'#888',marginBottom:'16px'}},'Only adds titles not already in your list — nothing is changed or removed.'),
+        h('div',{className:'sd'},'☁ Supabase Connection'),
+        getSB()
+          ? h('div',{},
+              h('div',{style:{fontSize:'13px',color:'#2a5e2a',marginBottom:'8px'}},'✓ Connected — data syncs automatically.'),
+              h('div',{style:{display:'flex',gap:'8px',marginBottom:'4px'}},
+                btn('b1',{style:{flex:'1'}},'☁ Force Sync Now',async ()=>{toast('Syncing…');await DB.load();}),
+                btn('b3','Disconnect',()=>{if(confirm('Disconnect Supabase? App will use localStorage only.')){localStorage.removeItem('cjt_sbUrl');localStorage.removeItem('cjt_sbKey');_sb=null;render();toast('Disconnected from Supabase');}})
+              )
+            )
+          : h('div',{},
+              h('div',{style:{fontSize:'13px',color:'#888',marginBottom:'8px'}},'Not connected — running in local-only mode.'),
+              btn('b1 bf','☁ Connect Supabase',()=>{st.showSettings=false;render();setTimeout(()=>showSetupScreen(),50);})
+            ),
         h('div',{style:{fontSize:'12px',color:'#888',marginBottom:'8px'}},'⚠ Danger Zone'),
         btn('b6 bf','🗑 Clear All Data & Reset',()=>{
           if(confirm('Delete ALL data? This cannot be undone.')){
@@ -1419,7 +1686,7 @@ function render(){
   app.appendChild(h('header',{className:'hdr'},h('div',{className:'hdr-in'},
     h('div',{style:{display:'flex',alignItems:'center',gap:'12px'}},h('span',{style:{fontSize:'28px'}},'🗞'),h('div',{},h('div',{className:'logo-n'},'C J TORODE'),h('div',{className:'logo-s'},'Newsagent'))),
     h('div',{style:{display:'flex',alignItems:'center',gap:'14px'}},
-      h('div',{style:{fontSize:'11px',color:'#4a8a4a',letterSpacing:'.5px'}},'💾 Auto-saving'),
+      h('div',{style:{fontSize:'11px',color:getSB()?'#4a8a4a':'#888',letterSpacing:'.5px'}},getSB()?'☁ Cloud Sync':'💾 Local Only'),
       h('div',{style:{fontSize:'13px',color:'#888'}},new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'})),
       btn('btn b3','⚙ Settings',()=>{st.showSettings=true;render();})
     )
@@ -1450,7 +1717,14 @@ function render(){
 })();
 
 checkWedCharge();
-render();
+
+// ── STARTUP ──────────────────────────────────────────────────────
+// Show setup screen if no Supabase config yet; otherwise launch directly
+if(!localStorage.getItem('cjt_sbUrl')){
+  showSetupScreen();
+} else {
+  startApp();
+}
 </script>
 </body>
 </html>

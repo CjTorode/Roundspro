@@ -238,7 +238,7 @@ const DB = {
         if(r.delivery_note !== undefined){ r.deliveryNote = r.delivery_note||''; delete r.delivery_note; }
         if(r.gst_exempt !== undefined){ r.gstExempt = r.gst_exempt; delete r.gst_exempt; }
         if(!r.roundId && r.round_id !== undefined){ r.roundId = r.round_id; } delete r.round_id;
-        if(r.round_order !== undefined){ r.roundOrder = r.round_order; delete r.round_order; }
+        delete r.round_order; // use "roundOrder" camelCase column instead
         if(r.list_order !== undefined){ r.listOrder = r.list_order; delete r.list_order; }
         if(r.start_date !== undefined){ r.startDate = r.start_date; delete r.start_date; }
         if(!r.papers) r.papers = [];

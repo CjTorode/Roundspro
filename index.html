@@ -363,6 +363,7 @@ const st={
   search:'',newEvent:'',
   newHoliday:{type:'range',start:'',end:'',date:'',custId:null},
   newCustomer:{name:'',address:'',phone:'',email:'',papers:[],deliveryCharge:.5,gstExempt:false,roundId:null,roundOrder:99,deliveryNote:'',holidays:[]},
+  customerRoundFilter:'all',
   newStock:{title:'',type:'paper',freq:'daily',deliveryDays:[1,2,3,4,5],costPrice:'',sellPrice:'',stock:'',gstApplicable:false},
   newRound:{name:'',area:''},paymentAmount:'',paymentNote:'',showPaperLog:null,paperChangeDate:'',paperChangeTitle:'',paperChangeAction:'add',newPriceEntry:'',newPriceDate:'',newCustomerInsertAfter:'end',
 };
@@ -879,12 +880,24 @@ function rCustomers(){
   }
 
   const sorted=[...st.customers].sort((a,b)=>(a.listOrder||0)-(b.listOrder||0));
-  const fil=sorted.filter(c=>c.name.toLowerCase().includes(st.search.toLowerCase())||c.address.toLowerCase().includes(st.search.toLowerCase()));
+  const fil=sorted.filter(c=>{
+    const matchSearch=c.name.toLowerCase().includes(st.search.toLowerCase())||c.address.toLowerCase().includes(st.search.toLowerCase());
+    const matchRound=st.customerRoundFilter==='all'||c.roundId===st.customerRoundFilter;
+    return matchSearch&&matchRound;
+  });
   const ts=tod();
+  const roundFilters=[{id:'all',name:'All Rounds'},...st.rounds.map(r=>({id:r.id,name:r.name}))];
   return h('div',{},
     h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'16px'}},
       h('h2',{className:'st',style:{marginBottom:'0',flex:'1'}},'Customer Records'),
       btn('b1','+ Add Customer',()=>{st.showAddCustomer=true;render();})
+    ),
+    h('div',{style:{display:'flex',gap:'8px',marginBottom:'12px',flexWrap:'wrap'}},
+      ...roundFilters.map(r=>h('button',{
+        className:'btn '+(st.customerRoundFilter===r.id?'b2':'b3'),
+        onclick:()=>{st.customerRoundFilter=r.id;render();}
+      },r.name+(r.id!=='all'?' ('+st.customers.filter(c=>c.roundId===r.id).length+')':''))),
+      h('span',{style:{marginLeft:'auto',fontSize:'13px',color:'#888',alignSelf:'center'}},fil.length+' customer'+(fil.length!==1?'s':''))
     ),
     h('input',{className:'fi',placeholder:'Search by name or address…',value:st.search,oninput:e=>{st.search=e.target.value;render();},style:{marginBottom:'14px'}}),
     h('div',{style:{display:'grid',gap:'10px'}},

@@ -145,7 +145,19 @@ const DB = {
   async saveCustomers(){
     if(!getSB()) return;
     try {
-      const rows = st.customers.map(c => { const {user_id, ...rest} = c; return {...rest, user_id: USER_ID}; });
+      const rows = st.customers.map(c => {
+        const {user_id, ...rest} = c;
+        return {
+          ...rest,
+          user_id: USER_ID,
+          delivery_charge: c.deliveryCharge,
+          delivery_note: c.deliveryNote||'',
+          gst_exempt: c.gstExempt||false,
+          round_id: c.roundId||null,
+          round_order: c.roundOrder||0,
+          list_order: c.listOrder||0,
+        };
+      });
       await sbUpsert('customers', rows);
     } catch(e){ console.warn('saveCustomers:', e.message); }
     S.set('customers', st.customers);
@@ -213,7 +225,20 @@ const DB = {
         sbSelect('payments'),
         sbSelect('settings')
       ]);
-      if(custs && custs.length){ st.customers = custs.map(r=>{delete r.user_id;return r;}); S.set('customers',st.customers); }
+      if(custs && custs.length){ st.customers = custs.map(r=>{
+        delete r.user_id;
+        // Map snake_case DB columns to camelCase app fields
+        if(r.delivery_charge !== undefined){ r.deliveryCharge = parseFloat(r.delivery_charge); delete r.delivery_charge; }
+        if(r.delivery_note !== undefined){ r.deliveryNote = r.delivery_note||''; delete r.delivery_note; }
+        if(r.gst_exempt !== undefined){ r.gstExempt = r.gst_exempt; delete r.gst_exempt; }
+        if(r.round_id !== undefined){ r.roundId = r.round_id; delete r.round_id; }
+        if(r.round_order !== undefined){ r.roundOrder = r.round_order; delete r.round_order; }
+        if(r.list_order !== undefined){ r.listOrder = r.list_order; delete r.list_order; }
+        if(r.start_date !== undefined){ r.startDate = r.start_date; delete r.start_date; }
+        if(!r.papers) r.papers = [];
+        if(!r.holidays) r.holidays = [];
+        return r;
+      }); S.set('customers',st.customers); }
       if(stocks && stocks.length){ st.stock = stocks.map(r=>{delete r.user_id;return r;}); S.set('stock',st.stock); }
       if(rounds && rounds.length){ st.rounds = rounds.map(r=>{delete r.user_id;return r;}); S.set('rounds',st.rounds); }
       if(pays && pays.length){ st.payments = pays.map(r=>{delete r.user_id;return r;}); S.set('payments',st.payments); }

@@ -74,6 +74,81 @@
 // Config stored in localStorage: cjt_sbUrl / cjt_sbKey
 const USER_ID = '11ac215f-f91c-4973-a0db-86ba84ee0eba';
 
+// ── PIN LOGIN SYSTEM ─────────────────────────────────────────────
+const PINS = {
+  '5126': 'admin',   // Full access
+  '2205': 'driver'   // Round 2 only
+};
+let _role = localStorage.getItem('cjt_role') || null;
+let _pin_entered = localStorage.getItem('cjt_pin_ok') === '1';
+
+function getRole(){ return _role; }
+function isAdmin(){ return _role === 'admin'; }
+function isDriver(){ return _role === 'driver'; }
+function isLoggedIn(){ return _role !== null; }
+
+function doLogin(pin){
+  const role = PINS[pin.trim()];
+  if(role){
+    _role = role;
+    _pin_entered = true;
+    localStorage.setItem('cjt_role', role);
+    localStorage.setItem('cjt_pin_ok', '1');
+    return true;
+  }
+  return false;
+}
+
+function doLogout(){
+  _role = null;
+  _pin_entered = false;
+  localStorage.removeItem('cjt_role');
+  localStorage.removeItem('cjt_pin_ok');
+}
+
+function showPinScreen(){
+  const app = document.getElementById('app');
+  app.innerHTML = '';
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'min-height:100vh;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:24px;font-family:Georgia,serif';
+  let pinVal = '';
+  let errMsg = '';
+
+  function renderPin(){
+    wrap.innerHTML = '';
+    const box = document.createElement('div');
+    box.style.cssText = 'background:#fff;border:2px solid var(--gold);border-radius:6px;padding:36px;width:340px;max-width:100%;box-shadow:0 8px 40px rgba(0,0,0,.15);text-align:center';
+    box.innerHTML = `
+      <div style="font-size:36px;margin-bottom:8px">🗞</div>
+      <div style="font-size:20px;font-weight:bold;letter-spacing:1px;color:#1a1a1a;margin-bottom:4px">ROUNDSPRO</div>
+      <div style="font-size:11px;letter-spacing:3px;color:#aaa;text-transform:uppercase;margin-bottom:24px">Enter PIN</div>
+      ${errMsg ? `<div style="background:#fff3f3;border:1px solid #e08080;border-radius:4px;padding:8px;font-size:13px;color:#b94040;margin-bottom:12px">${errMsg}</div>` : ''}
+      <div style="font-size:32px;letter-spacing:12px;font-weight:bold;color:#1a1a1a;margin-bottom:20px;min-height:48px">${'●'.repeat(pinVal.length)}</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px">
+        ${[1,2,3,4,5,6,7,8,9].map(n=>`<button class="pin-btn" data-n="${n}" style="padding:16px;font-size:20px;font-family:Georgia,serif;background:#f5f0e8;border:1px solid #ddd;border-radius:4px;cursor:pointer;font-weight:bold">${n}</button>`).join('')}
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+        <button class="pin-btn" data-n="del" style="padding:16px;font-size:16px;font-family:Georgia,serif;background:#f0ebe0;border:1px solid #ddd;border-radius:4px;cursor:pointer">⌫</button>
+        <button class="pin-btn" data-n="0" style="padding:16px;font-size:20px;font-family:Georgia,serif;background:#f5f0e8;border:1px solid #ddd;border-radius:4px;cursor:pointer;font-weight:bold">0</button>
+        <button class="pin-btn" data-n="ok" style="padding:16px;font-size:16px;font-family:Georgia,serif;background:#1a1a1a;color:#c8a84b;border:none;border-radius:4px;cursor:pointer;font-weight:bold">OK</button>
+      </div>
+    `;
+    wrap.appendChild(box);
+    box.querySelectorAll('.pin-btn').forEach(btn => {
+      btn.onclick = function(){
+        const n = this.dataset.n;
+        if(n === 'del'){ pinVal = pinVal.slice(0,-1); errMsg=''; renderPin(); }
+        else if(n === 'ok'){
+          if(doLogin(pinVal)){ startApp(); }
+          else { errMsg='Incorrect PIN'; pinVal=''; renderPin(); }
+        } else { if(pinVal.length < 6) pinVal += n; errMsg=''; renderPin(); }
+      };
+    });
+  }
+  renderPin();
+  app.appendChild(wrap);
+}
+
 // Generate a proper UUID v4
 function uuidv4(){
   return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,c=>
@@ -746,8 +821,9 @@ function emailBill(cid){
 }
 
 function emailAllBills(){
-  const withEmail=st.customers.filter(c=>c.email);
-  const without=st.customers.filter(c=>!c.email);
+  const allCusts=isDriver()?st.customers.filter(c=>c.roundId==='round-2'):st.customers;
+  const withEmail=allCusts.filter(c=>c.email);
+  const without=allCusts.filter(c=>!c.email);
   if(!withEmail.length){alert('No customers have email addresses on file.');return;}
   const msg='Send bills to '+withEmail.length+' customer'+(withEmail.length!==1?'s':'')+' with email addresses?'+(without.length?'\n\nNo email on file for:\n'+without.map(c=>c.name).join('\n'):'');
   if(!confirm(msg))return;
@@ -873,7 +949,7 @@ function rDash(){
     h('div',{className:'g2',style:{marginBottom:'20px'}},
       h('div',{className:'card'},
         h('div',{className:'ct'},'🚲 Today\'s Rounds'),
-        ...st.rounds.map(r=>{
+        ...visibleRounds.map(r=>{
           const n=st.customers.filter(c=>c.roundId===r.id).length;
           return h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'9px 0',borderBottom:'1px solid #e8e0d0'}},
             h('div',{},h('div',{style:{fontWeight:'bold',fontSize:'14px'}},r.name),h('div',{style:{fontSize:'12px',color:'#888'}},r.area+' · '+n+' stop'+(n!==1?'s':''))),
@@ -899,7 +975,7 @@ function rDash(){
     ),
     h('div',{className:'card'},
       h('div',{className:'ct'},'⚠ Accounts Owing'),
-      ...st.customers.filter(c=>c.balance<0).map(c=>h('div',{className:'row'},h('span',{},c.name),h('span',{style:{color:'#b94040',fontWeight:'bold'}},fmt(c.balance)))),
+      ...(isDriver()?st.customers.filter(c=>c.balance<0&&c.roundId==='round-2'):st.customers.filter(c=>c.balance<0)).map(c=>h('div',{className:'row'},h('span',{},c.name),h('span',{style:{color:'#b94040',fontWeight:'bold'}},fmt(c.balance)))),
       !st.customers.some(c=>c.balance<0)?h('p',{style:{color:'#888',fontSize:'14px'}},'All accounts clear ✓'):null,
       h('div',{style:{marginTop:'12px',paddingTop:'10px',borderTop:'2px solid #1a1a1a',display:'flex',justifyContent:'space-between',fontWeight:'bold'}},
         h('span',{},'Total Outstanding'),h('span',{style:{color:'#b94040'}},fmt(owed))
@@ -927,7 +1003,8 @@ function rCustomers(){
     ps('customers');render();
   }
 
-  const sorted=[...st.customers].sort((a,b)=>{
+  const visibleCustomers=isDriver()?st.customers.filter(c=>c.roundId==='round-2'):st.customers;
+  const sorted=[...visibleCustomers].sort((a,b)=>{
     // When filtering by a specific round, sort by roundOrder; otherwise by listOrder
     if(st.customerRoundFilter!=='all'){
       return (a.roundOrder||99)-(b.roundOrder||99);
@@ -998,6 +1075,7 @@ function rCustomers(){
 }
 
 function rRounds(){
+  const visibleRounds=isDriver()?st.rounds.filter(r=>r.id==='round-2'):st.rounds;
   return h('div',{},
     h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'16px'}},
       h('h2',{className:'st',style:{marginBottom:'0',flex:'1'}},'Delivery Rounds'),
@@ -1009,7 +1087,7 @@ function rRounds(){
     h('div',{style:{display:'grid',gridTemplateColumns:'260px 1fr',gap:'20px'}},
       h('div',{},
         h('div',{style:{fontSize:'11px',textTransform:'uppercase',letterSpacing:'1px',color:'#888',marginBottom:'8px',fontWeight:'bold'}},'Select a Round'),
-        ...st.rounds.map(r=>{
+        ...visibleRounds.map(r=>{
           const n=st.customers.filter(c=>c.roundId===r.id).length;
           const sel=st.selectedRound&&st.selectedRound.id===r.id;
           return h('div',{className:'card',style:{padding:'12px 14px',marginBottom:'8px',cursor:'pointer',border:sel?'2px solid #c8a84b':'1px solid #ddd',background:sel?'#fffbf0':'#fff'},onclick:()=>{st.selectedRound=r;render();}},
@@ -1130,7 +1208,7 @@ function rBilling(){
           h('div',{style:{display:'flex',justifyContent:'space-between',fontWeight:'bold',marginBottom:'10px'}},h('span',{},'Total (28 days)'),h('span',{},fmt(st.customers.reduce((s,c)=>s+calcBill(c,st.billingStart,28).grandTotal,0)))),
           h('div',{style:{display:'flex',gap:'8px',marginTop:'14px',paddingTop:'12px',borderTop:'2px solid #1a1a1a'}},
             btn('b1',{style:{flex:'1'}},'🖨 Print Bills (no email)',()=>{
-              const toPrint=st.customers.filter(function(c){return !c.email;});
+              const toPrint=(isDriver()?st.customers.filter(c=>c.roundId==='round-2'):st.customers).filter(function(c){return !c.email;});
               const skipped=st.customers.filter(function(c){return c.email;});
               if(!toPrint.length){alert('All customers have email addresses — nothing to print.\n\nUse "📧 Email ALL Bills" to send to everyone.');return;}
               toPrint.forEach(function(c){printBill(c.id);});
@@ -1800,13 +1878,17 @@ function rModals(){
 // ── MAIN RENDER ───────────────────────────────────────────────────
 function render(){
   const app=document.getElementById('app');app.innerHTML='';
-  const tabs=[{k:'dashboard',i:'⊞',l:'Dashboard'},{k:'customers',i:'👥',l:'Customers'},{k:'rounds',i:'🚲',l:'Rounds'},{k:'billing',i:'£',l:'Billing'},{k:'stock',i:'📦',l:'Stock'},{k:'calendar',i:'📅',l:'Calendar'}];
+  const tabs=isDriver()?[{k:'customers',i:'👥',l:'Customers'},{k:'rounds',i:'🚲',l:'Rounds'},{k:'billing',i:'£',l:'Billing'}]:[{k:'dashboard',i:'⊞',l:'Dashboard'},{k:'customers',i:'👥',l:'Customers'},{k:'rounds',i:'🚲',l:'Rounds'},{k:'billing',i:'£',l:'Billing'},{k:'stock',i:'📦',l:'Stock'},{k:'calendar',i:'📅',l:'Calendar'}];
   app.appendChild(h('header',{className:'hdr'},h('div',{className:'hdr-in'},
     h('div',{style:{display:'flex',alignItems:'center',gap:'12px'}},h('span',{style:{fontSize:'28px'}},'🗞'),h('div',{},h('div',{className:'logo-n'},'C J TORODE'),h('div',{className:'logo-s'},'Newsagent'))),
     h('div',{style:{display:'flex',alignItems:'center',gap:'14px'}},
       h('div',{style:{fontSize:'11px',color:getSB()?'#4a8a4a':'#888',letterSpacing:'.5px'}},getSB()?'☁ Cloud Sync':'💾 Local Only'),
       h('div',{style:{fontSize:'13px',color:'#888'}},new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'})),
-      btn('btn b3','⚙ Settings',()=>{st.showSettings=true;render();})
+      h('div',{style:{display:'flex',gap:'8px',alignItems:'center'}},
+        isAdmin()?btn('btn b3','⚙ Settings',()=>{st.showSettings=true;render();}):null,
+        isDriver()?h('span',{style:{fontSize:'11px',color:'#c8a84b',padding:'5px 8px',background:'#2c2c2c',borderRadius:'3px'}},'🚲 Round 2'):null,
+        h('button',{className:'btn b3',style:{fontSize:'12px',padding:'5px 12px'},onclick:()=>{if(confirm('Log out?')){doLogout();showPinScreen();}}},'🔒')
+      )
     )
   )));
   app.appendChild(h('nav',{className:'nav'},h('div',{className:'nav-in'},
@@ -1837,9 +1919,10 @@ function render(){
 checkWedCharge();
 
 // ── STARTUP ──────────────────────────────────────────────────────
-// Show setup screen if no Supabase config yet; otherwise launch directly
 if(!localStorage.getItem('cjt_sbUrl')){
   showSetupScreen();
+} else if(!isLoggedIn()){
+  showPinScreen();
 } else {
   startApp();
 }

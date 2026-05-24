@@ -1107,11 +1107,23 @@ function rRounds(){
           const inR=st.customers.filter(c=>c.roundId===r.id).sort((a,b)=>a.roundOrder-b.roundOrder);
           const una=st.customers.filter(c=>!c.roundId);
           function mv(cid,dir){
-            const idx=inR.findIndex(c=>c.id===cid);
+            // Renumber all customers in round sequentially first to avoid duplicates
+            const renumbered=inR.map((c,i)=>({...c,roundOrder:i+1}));
+            st.customers=st.customers.map(c=>{
+              const r=renumbered.find(x=>x.id===c.id);
+              return r?r:c;
+            });
+            const inR2=st.customers.filter(c=>c.roundId===r.id).sort((a,b)=>a.roundOrder-b.roundOrder);
+            const idx=inR2.findIndex(c=>c.id===cid);
             const si=dir==='up'?idx-1:idx+1;
-            if(si<0||si>=inR.length)return;
-            const a=inR[idx],b=inR[si];
-            st.customers=st.customers.map(c=>{if(c.id===a.id)return{...c,roundOrder:b.roundOrder};if(c.id===b.id)return{...c,roundOrder:a.roundOrder};return c;});
+            if(si<0||si>=inR2.length)return;
+            const a=inR2[idx],b=inR2[si];
+            const aOrder=a.roundOrder, bOrder=b.roundOrder;
+            st.customers=st.customers.map(c=>{
+              if(c.id===a.id)return{...c,roundOrder:bOrder};
+              if(c.id===b.id)return{...c,roundOrder:aOrder};
+              return c;
+            });
             ps('customers');render();
           }
           return h('div',{},

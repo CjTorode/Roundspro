@@ -571,7 +571,7 @@ function calcBill(c,start,days){
   }).filter(Boolean);
 
   const pt=lines.reduce(function(s,l){return s+l.lineTotal;},0);
-  const dt=c.deliveryCharge*cd;
+  const weeks=Math.round(days/7); const dt=c.deliveryCharge*weeks; // flat weekly charge
   const dg=!c.gstExempt?dt*(gst/100):0;
   const gt=lines.reduce(function(s,l){return s+l.gstAmt;},0)+dg;
   const sub=pt+dt;
@@ -682,7 +682,7 @@ ${outstanding>0?`<tr class="tr"><td>Previous outstanding</td><td>${fmt(outstandi
     const totalPayable=bill.grandTotal+outstanding;
     table=`<table><thead><tr><th>Description</th><th>Unit</th><th>Qty</th><th>Amount</th>${gst?'<th>GST</th>':''}</tr></thead>
 <tbody>${bill.lines.map(l=>`<tr><td>${l.title}${l.freq==='monthly'?' (monthly)':l.freq==='weekly'?' (weekly)':''}</td><td>${fmt(l.unitPrice)}</td><td>${l.label}</td><td>${fmt(l.lineTotal)}</td>${gst?`<td>${l.gstAmt>0?fmt(l.gstAmt):'—'}</td>`:''}</tr>`).join('')}
-<tr><td><em>Delivery</em></td><td>${fmt(c.deliveryCharge)}</td><td>${bill.chargeDays} days</td><td>${fmt(bill.deliveryTotal)}</td>${gst?`<td>${bill.deliveryGst>0?fmt(bill.deliveryGst):'—'}</td>`:''}</tr></tbody>
+<tr><td><em>Delivery</em></td><td>${fmt(c.deliveryCharge)}</td><td>${Math.round(28/7)} weeks</td><td>${fmt(bill.deliveryTotal)}</td>${gst?`<td>${bill.deliveryGst>0?fmt(bill.deliveryGst):'—'}</td>`:''}</tr></tbody>
 <tfoot><tr class="tr"><td colspan="3">Subtotal</td><td>${fmt(bill.subtotal)}</td>${gst?`<td>${fmt(bill.gstTotal)}</td>`:''}</tr>
 ${gst?`<tr class="tr"><td colspan="4">GST @ ${gst}%</td><td>${fmt(bill.gstTotal)}</td></tr>`:''}
 <tr class="gr"><td colspan="${gst?4:3}">This cycle</td><td colspan="2">${fmt(bill.grandTotal)}</td></tr>
@@ -731,7 +731,7 @@ function emailBill(cid){
       body+=line(l.title.padEnd(28)+l.label.padEnd(12)+fmt(l.lineTotal));
       if(l.gstAmt>0)body+=line('  GST'.padEnd(40)+fmt(l.gstAmt));
     });
-    body+=line(('Delivery ('+bill.chargeDays+' days)').padEnd(40)+fmt(bill.deliveryTotal));
+    body+=line(('Delivery (4 weeks)').padEnd(40)+fmt(bill.deliveryTotal));
     if(bill.deliveryGst>0)body+=line('  Delivery GST'.padEnd(40)+fmt(bill.deliveryGst));
     body+=line(sep);
     if(gst>0){body+=line('Subtotal'.padEnd(40)+fmt(bill.subtotal));body+=line(('GST @ '+gst+'%').padEnd(40)+fmt(bill.gstTotal));}

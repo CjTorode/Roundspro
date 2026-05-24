@@ -927,7 +927,13 @@ function rCustomers(){
     ps('customers');render();
   }
 
-  const sorted=[...st.customers].sort((a,b)=>(a.listOrder||0)-(b.listOrder||0));
+  const sorted=[...st.customers].sort((a,b)=>{
+    // When filtering by a specific round, sort by roundOrder; otherwise by listOrder
+    if(st.customerRoundFilter!=='all'){
+      return (a.roundOrder||99)-(b.roundOrder||99);
+    }
+    return (a.listOrder||0)-(b.listOrder||0);
+  });
   const fil=sorted.filter(c=>{
     const matchSearch=c.name.toLowerCase().includes(st.search.toLowerCase())||c.address.toLowerCase().includes(st.search.toLowerCase());
     const matchRound=st.customerRoundFilter==='all'||c.roundId===st.customerRoundFilter;

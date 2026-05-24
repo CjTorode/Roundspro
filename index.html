@@ -239,7 +239,17 @@ const DB = {
         if(!r.holidays) r.holidays = [];
         return r;
       }); S.set('customers',st.customers); }
-      if(stocks && stocks.length){ st.stock = stocks.map(r=>{delete r.user_id;return r;}); S.set('stock',st.stock); }
+      if(stocks && stocks.length){ st.stock = stocks.map(r=>{
+        delete r.user_id;
+        if(r.cost_price !== undefined){ r.costPrice = parseFloat(r.cost_price)||0; delete r.cost_price; }
+        if(r.sell_price !== undefined){ r.sellPrice = parseFloat(r.sell_price)||0; delete r.sell_price; }
+        if(r.gst_applicable !== undefined){ r.gstApplicable = r.gst_applicable; delete r.gst_applicable; }
+        if(r.delivery_days !== undefined){ r.deliveryDays = r.delivery_days||[]; delete r.delivery_days; }
+        if(r.price_log !== undefined){ r.priceLog = r.price_log||[]; delete r.price_log; }
+        if(!r.deliveryDays) r.deliveryDays = [];
+        if(!r.priceLog) r.priceLog = [];
+        return r;
+      }); S.set('stock',st.stock); }
       if(rounds && rounds.length){ st.rounds = rounds.map(r=>{delete r.user_id;return r;}); S.set('rounds',st.rounds); }
       if(pays && pays.length){ st.payments = pays.map(r=>{delete r.user_id;return r;}); S.set('payments',st.payments); }
       if(settings){
@@ -1158,24 +1168,14 @@ function rBilling(){
 
 function rStock(){
   const cols=st.showCostPrice?'2fr 1fr 1fr 1fr 1fr 1fr 110px 60px':'2fr 1fr 1fr 1fr 110px 60px';
-  const mm=st.stock.filter(s=>s.type==='magazine'&&s.freq==='monthly');
-  return h('div',{},
-    h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'16px'}},
-      h('h2',{className:'st',style:{marginBottom:'0',flex:'1'}},'Stock Management'),
-      btn('b1','+ Add Title',()=>{st.showAddStock=true;render();})
-    ),
-    mm.length?h('div',{className:'a3',style:{marginBottom:'14px'}},
-      h('div',{style:{fontWeight:'bold',marginBottom:'3px'}},'📖 Monthly Magazines'),
-      h('div',{style:{fontSize:'12px',color:'#666'}},'Monthly magazines are included automatically in each 4-week cycle bill — no manual charging needed.')
-    ):null,
-    h('div',{style:{display:'grid',gap:'8px'}},
-      h('div',{style:{display:'grid',gridTemplateColumns:cols,gap:'8px',padding:'8px 16px',background:'#1a1a1a',color:'#c8a84b',borderRadius:'4px',fontSize:'11px',fontWeight:'bold',letterSpacing:'1px',textTransform:'uppercase'}},
-        h('span',{},'Title'),h('span',{},'Type'),
-        st.showCostPrice?h('span',{},'Cost'):null,h('span',{},'Sell'),
-        st.showCostPrice?h('span',{},'Margin'):null,
-        h('span',{},'GST?'),h('span',{},'Stock'),h('span',{},'Edit')
-      ),
-      ...st.stock.map(s=>h('div',{className:'card',style:{display:'grid',gridTemplateColumns:cols,gap:'8px',padding:'12px 16px',alignItems:'center'}},
+  // Group stock: Guernsey Press first, then papers, then weekly mags, then monthly mags
+  const gp=st.stock.filter(s=>s.title==='Guernsey Press');
+  const papers=st.stock.filter(s=>s.type==='paper'&&s.title!=='Guernsey Press').sort((a,b)=>a.title.localeCompare(b.title));
+  const weeklyMags=st.stock.filter(s=>s.type==='magazine'&&s.freq==='weekly').sort((a,b)=>a.title.localeCompare(b.title));
+  const monthlyMags=st.stock.filter(s=>s.type==='magazine'&&s.freq==='monthly').sort((a,b)=>a.title.localeCompare(b.title));
+
+  function stockRow(s){
+    return h('div',{className:'card',style:{display:'grid',gridTemplateColumns:cols,gap:'8px',padding:'12px 16px',alignItems:'center'}},
         h('div',{},
           h('div',{style:{fontWeight:'bold'}},s.title),
           h('span',{className:'tag '+(s.freq==='weekly'?'tag-w':s.freq==='monthly'?'tag-m':'tag-g'),style:{padding:'1px 6px',fontSize:'11px'}},s.freq==='weekly'?'📰 Weekly':s.freq==='monthly'?'📖 Monthly':(s.deliveryDays||[]).map(d=>['Su','Mo','Tu','We','Th','Fr','Sa'][d]).join('·')||'Daily')
@@ -1190,7 +1190,39 @@ function rStock(){
           h('span',{style:{fontWeight:'bold',minWidth:'22px',textAlign:'center'}},s.stock),
           h('button',{className:'btn b3',style:{fontSize:'12px'},onclick:()=>{st.stock=st.stock.map(i=>i.id===s.id?{...i,stock:i.stock+1}:i);ps('stock');render();}},'+')),
         btn('b3',{style:{fontSize:'12px',padding:'4px 8px'}},'✏ Edit',()=>{st.editStock={...s};render();})
-      ))
+      );
+  }
+
+  function sectionHeader(label){
+    return h('div',{style:{background:'#2c2c2c',color:'#c8a84b',padding:'6px 16px',borderRadius:'4px',fontSize:'11px',fontWeight:'bold',letterSpacing:'1px',textTransform:'uppercase',marginTop:'10px'}},label);
+  }
+  const colHeader=h('div',{style:{display:'grid',gridTemplateColumns:cols,gap:'8px',padding:'8px 16px',background:'#1a1a1a',color:'#c8a84b',borderRadius:'4px',fontSize:'11px',fontWeight:'bold',letterSpacing:'1px',textTransform:'uppercase'}},
+    h('span',{},'Title'),h('span',{},'Type'),
+    st.showCostPrice?h('span',{},'Cost'):null,h('span',{},'Sell'),
+    st.showCostPrice?h('span',{},'Margin'):null,
+    h('span',{},'GST?'),h('span',{},'Stock'),h('span',{},'Edit')
+  );
+
+  return h('div',{},
+    h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'16px'}},
+      h('h2',{className:'st',style:{marginBottom:'0',flex:'1'}},'Stock Management'),
+      btn('b1','+ Add Title',()=>{st.showAddStock=true;render();})
+    ),
+    monthlyMags.length?h('div',{className:'a3',style:{marginBottom:'14px'}},
+      h('div',{style:{fontWeight:'bold',marginBottom:'3px'}},'📖 Monthly Magazines'),
+      h('div',{style:{fontSize:'12px',color:'#666'}},'Monthly magazines are included automatically in each 4-week cycle bill — no manual charging needed.')
+    ):null,
+    h('div',{style:{display:'grid',gap:'6px'}},
+      sectionHeader('🗞 Papers — '+( gp.length+papers.length)+' titles'),
+      colHeader,
+      ...gp.map(stockRow),
+      ...papers.map(stockRow),
+      sectionHeader('📰 Weekly Magazines — '+weeklyMags.length+' titles'),
+      colHeader,
+      ...weeklyMags.map(stockRow),
+      sectionHeader('📖 Monthly Magazines — '+monthlyMags.length+' titles'),
+      colHeader,
+      ...monthlyMags.map(stockRow)
     ),
     h('div',{className:'card',style:{marginTop:'10px',display:'flex',justifyContent:'space-between'}},
       h('span',{style:{fontWeight:'bold'}},'Total items in stock'),

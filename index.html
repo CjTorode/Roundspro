@@ -122,7 +122,13 @@ async function sbFetch(method, table, body, params){
 }
 
 async function sbSelect(table, filter){
-  return await sbFetch('GET', table, null, 'user_id=eq.' + USER_ID + (filter||'') + '&limit=1000');
+  // Explicitly select all columns including camelCase ones
+  const cols = table === 'customers' 
+    ? 'id,user_id,name,address,phone,email,balance,papers,delivery_charge,gst_exempt,round_id,"roundId","roundOrder","deliveryCharge","gstExempt","deliveryNote","listOrder",delivery_note,round_order,list_order,holidays,start_date'
+    : table === 'stock'
+    ? 'id,user_id,title,type,freq,stock,sell_price,cost_price,gst_applicable,delivery_days,"sellPrice","costPrice","gstApplicable","deliveryDays","priceLog"'
+    : '*';
+  return await sbFetch('GET', table, null, 'select=' + cols + '&user_id=eq.' + USER_ID + (filter||'') + '&limit=1000');
 }
 
 async function sbUpsert(table, rows){
@@ -231,7 +237,7 @@ const DB = {
         if(r.delivery_charge !== undefined){ r.deliveryCharge = parseFloat(r.delivery_charge); delete r.delivery_charge; }
         if(r.delivery_note !== undefined){ r.deliveryNote = r.delivery_note||''; delete r.delivery_note; }
         if(r.gst_exempt !== undefined){ r.gstExempt = r.gst_exempt; delete r.gst_exempt; }
-        if(r.round_id !== undefined){ r.roundId = r.round_id; delete r.round_id; }
+        if(!r.roundId && r.round_id !== undefined){ r.roundId = r.round_id; } delete r.round_id;
         if(r.round_order !== undefined){ r.roundOrder = r.round_order; delete r.round_order; }
         if(r.list_order !== undefined){ r.listOrder = r.list_order; delete r.list_order; }
         if(r.start_date !== undefined){ r.startDate = r.start_date; delete r.start_date; }

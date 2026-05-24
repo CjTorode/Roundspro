@@ -965,7 +965,7 @@ function rCustomers(){
             h('div',{style:{fontSize:'13px',color:'#666',marginTop:'2px'}},'📍 '+c.address+' · 📞 '+c.phone),
             h('div',{style:{marginTop:'5px',display:'flex',flexWrap:'wrap',gap:'4px'}},
               ...c.papers.map(p=>h('span',{className:'tag'},p)),
-              h('span',{className:'tag tag-g'},'🚚 '+fmt(c.deliveryCharge)+'/day'),
+              h('span',{className:'tag tag-g'},'🚚 '+fmt(c.deliveryCharge)+'/week'),
               r?h('span',{className:'tag tag-b'},'🚲 '+r.name):null,
               c.gstExempt?h('span',{className:'tag tag-r'},'GST Exempt'):null,
               onH?h('span',{className:'tag tag-b'},'🏖 On Holiday'):null

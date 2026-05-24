@@ -717,19 +717,19 @@ function printBill(cid){
   const bi=[biz.address,biz.phone?'Tel: '+biz.phone:'',biz.email?'Email: '+biz.email:''].filter(Boolean).join('<br/>');
   const pb=biz.paymentInfo?`<div class="pay"><strong>Payment Details:</strong><br/>${biz.paymentInfo.replace(/\n/g,'<br/>')}</div>`:'';
   const css=`@page{size:A5 portrait;margin:12mm;margin-header:0;margin-footer:0}
-*{box-sizing:border-box}body{font-family:Georgia,serif;font-size:13px;color:#1a1a1a;margin:0}
-h1{font-size:19px;margin:0;letter-spacing:1px}.sub{font-size:10px;letter-spacing:3px;text-transform:uppercase;color:#888}
+*{box-sizing:border-box}body{font-family:Georgia,serif;font-size:15px;color:#1a1a1a;margin:0}
+h1{font-size:22px;margin:0;letter-spacing:1px}.sub{font-size:11px;letter-spacing:3px;text-transform:uppercase;color:#888}
 .hdr{border-bottom:3px solid #1a1a1a;padding-bottom:8px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:flex-start}
-.biz{font-size:12px;color:#555;margin-top:4px;line-height:1.5}.hr{text-align:right;font-size:12px;color:#555}
-.bt{margin-bottom:10px}table{width:100%;border-collapse:collapse;margin:8px 0;font-size:12px}
-th{background:#1a1a1a;color:#c8a84b;padding:6px 7px;text-align:left;font-size:11px}th:not(:first-child){text-align:right}
-td{padding:6px 7px;border-bottom:1px solid #e0d8cc}td:not(:first-child){text-align:right}
-.tr td{font-weight:bold;background:#f5f0e8}.gr td{font-weight:bold;font-size:14px;background:#1a1a1a;color:#c8a84b}
-.tot td{font-weight:bold;font-size:15px;background:#b94040;color:white}
-.owe{margin-top:8px;padding:7px 10px;background:#fff3f3;border:1px solid #e08080;border-radius:3px;font-size:12px}
-.pay{margin-top:8px;padding:7px 10px;background:#f5f0e8;border:1px solid #c8a84b;border-radius:3px;font-size:12px;line-height:1.6}
-.hol{margin-top:8px;padding:7px 10px;background:#eef3ff;border:1px solid #5a7ec8;border-radius:3px;font-size:12px}
-.ft{margin-top:10px;font-size:12px;color:#1a1a1a;font-weight:bold;border-top:2px solid #1a1a1a;padding-top:6px}
+.biz{font-size:14px;color:#555;margin-top:4px;line-height:1.6}.hr{text-align:right;font-size:14px;color:#555}
+.bt{margin-bottom:10px}table{width:100%;border-collapse:collapse;margin:8px 0;font-size:14px}
+th{background:#1a1a1a;color:#c8a84b;padding:7px 8px;text-align:left;font-size:13px}th:not(:first-child){text-align:right}
+td{padding:7px 8px;border-bottom:1px solid #e0d8cc}td:not(:first-child){text-align:right}
+.tr td{font-weight:bold;background:#f5f0e8}.gr td{font-weight:bold;font-size:16px;background:#1a1a1a;color:#c8a84b}
+.tot td{font-weight:bold;font-size:18px;background:#b94040;color:white}
+.owe{margin-top:8px;padding:8px 12px;background:#fff3f3;border:1px solid #e08080;border-radius:3px;font-size:14px}
+.pay{margin-top:8px;padding:8px 12px;background:#f5f0e8;border:1px solid #c8a84b;border-radius:3px;font-size:14px;line-height:1.7}
+.hol{margin-top:8px;padding:8px 12px;background:#eef3ff;border:1px solid #5a7ec8;border-radius:3px;font-size:14px}
+.ft{margin-top:10px;font-size:14px;color:#1a1a1a;font-weight:bold;border-top:2px solid #1a1a1a;padding-top:6px}
 html{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 a[href]:after{content:none!important}
 a[href]:before{content:none!important}

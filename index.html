@@ -221,7 +221,7 @@ const S={get:(k,fb)=>{try{const v=localStorage.getItem('cjt_'+k);return v?JSON.p
 // ── SUPABASE DATA LAYER ───────────────────────────────────────────
 const DB = {
   SETTINGS_KEYS: ['gstRate','gstEnabled','gstNumber','defaultDelivery','showCostPrice',
-    'calEvents','billingStart','billingPeriod','bizDetails','lastWedCharge','billStyle'],
+    'calEvents','billingStart','billingPeriod','billingStart2','billingPeriod2','bizDetails','lastWedCharge','billStyle'],
 
   async saveCustomers(){
     if(!getSB()) return;
@@ -469,6 +469,7 @@ const st={
   defaultDelivery:S.get('defaultDelivery',.5),showCostPrice:S.get('showCostPrice',true),
   calEvents:S.get('calEvents',[{date:'2026-05-19',text:'Stock delivery'},{date:'2026-05-26',text:'Bank holiday'}]),
   billingStart:S.get('billingStart',lastMon()),billingPeriod:S.get('billingPeriod',''),
+  billingStart2:S.get('billingStart2',lastMon()),billingPeriod2:S.get('billingPeriod2',''),
   bizDetails:S.get('bizDetails',{name:'C J Torode Newsagent',address:'',phone:'',email:'',paymentInfo:''}),
   lastWedCharge:S.get('lastWedCharge',''),
   billStyle:S.get('billStyle','detailed'),
@@ -508,6 +509,9 @@ function pa(){
   DB.saveSettings();
 }
 const fmt=v=>'£'+Math.abs(v).toFixed(2);
+// Get billing start for a customer based on their round
+function getBillingStart(c){ return (c&&c.roundId==='round-2')?st.billingStart2:st.billingStart; }
+function getBillingPeriod(c){ return (c&&c.roundId==='round-2')?(st.billingPeriod2||fds(st.billingStart2)+' – '+fds(new Date(new Date(st.billingStart2).getTime()+27*86400000).toISOString().split('T')[0])):(st.billingPeriod||fds(st.billingStart)+' – '+fds(new Date(new Date(st.billingStart).getTime()+27*86400000).toISOString().split('T')[0])); }
 const tod=()=>new Date().toISOString().split('T')[0];
 const fd=d=>new Date(d).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
 const fds=d=>new Date(d).toLocaleDateString('en-GB',{day:'numeric',month:'short'});
@@ -681,7 +685,7 @@ function closeCycle(){
   const ns=new Date(ce);ns.setDate(ns.getDate()+1);
   const ne=new Date(ns);ne.setDate(ne.getDate()+27);
   st.customers=st.customers.map(c=>{
-    const b=calcBill(c,st.billingStart,28);
+    const b=calcBill(c,getBillingStart(c),28);
     return{...c,balance:parseFloat((c.balance-b.grandTotal).toFixed(2))};
   });
   st.billingStart=ns.toISOString().split('T')[0];
@@ -711,7 +715,7 @@ function buildWeeklyRows(c,start){
 
 function printBill(cid){
   const c=st.customers.find(x=>x.id===cid);if(!c)return;
-  const bill=calcBill(c,st.billingStart,28);
+  const bill=calcBill(c,getBillingStart(c),28);
   const biz=st.bizDetails;const gst=st.gstEnabled?st.gstRate:0;
   const td=new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});
   const bi=[biz.address,biz.phone?'Tel: '+biz.phone:'',biz.email?'Email: '+biz.email:''].filter(Boolean).join('<br/>');
@@ -741,11 +745,11 @@ a[href]:before{content:none!important}
 }
 `;
   const hdr=`<div class="hdr"><div><h1>🗞 ${biz.name||'C J TORODE'}</h1><div class="sub">Customer Invoice</div><div class="biz">${bi}</div></div>
-<div class="hr"><strong>Date:</strong> ${td}<br/><strong>Period:</strong> ${st.billingPeriod||'4-week cycle'}${gst&&st.gstNumber?'<br/><strong>GST:</strong> '+st.gstNumber:''}${c.gstExempt?'<br/><em>GST Exempt</em>':''}</div></div>
+<div class="hr"><strong>Date:</strong> ${td}<br/><strong>Period:</strong> ${getBillingPeriod(c)||'4-week cycle'}${gst&&st.gstNumber?'<br/><strong>GST:</strong> '+st.gstNumber:''}${c.gstExempt?'<br/><em>GST Exempt</em>':''}</div></div>
 <div class="bt"><strong>Bill To:</strong><br/>${c.name}<br/>${c.address}${c.phone?'<br/>'+c.phone:''}</div>`;
   let table='';
   if(st.billStyle==='weekly'){
-    const wr=buildWeeklyRows(c,st.billingStart);
+    const wr=buildWeeklyRows(c,getBillingStart(c));
     const outstanding=c.balance<0?Math.abs(c.balance):0;
     const totalPayable=bill.grandTotal+outstanding;
     table=`<table><thead><tr><th>Period</th><th>Amount</th></tr></thead><tbody>
@@ -779,7 +783,7 @@ Simply email us at <strong>craigpapers@icloud.com</strong> with your house name 
 function emailBill(cid){
   const c=st.customers.find(x=>x.id===cid);if(!c)return;
   if(!c.email){alert('No email address on file for '+c.name+'.\nAdd their email in the customer record first.');return;}
-  const bill=calcBill(c,st.billingStart,28);
+  const bill=calcBill(c,getBillingStart(c),28);
   const biz=st.bizDetails;const gst=st.gstEnabled?st.gstRate:0;
   const period=st.billingPeriod||fds(st.billingStart)+' onwards';
   const line=s=>s+'\r\n';const sep='-'.repeat(50);
@@ -793,7 +797,7 @@ function emailBill(cid){
   const outstanding=c.balance<0?Math.abs(c.balance):0;
   const totalPayable=bill.grandTotal+outstanding;
   if(st.billStyle==='weekly'){
-    const wr=buildWeeklyRows(c,st.billingStart);
+    const wr=buildWeeklyRows(c,getBillingStart(c));
     body+=line('WEEKLY SUMMARY');body+=line(sep);
     wr.forEach(r=>{body+=line(r.label+(r.hdays>0?' ('+r.hdays+' holiday day'+(r.hdays!==1?'s':'')+' deducted)':'')+'   '+fmt(r.total));});
     body+=line(sep);
@@ -1034,7 +1038,7 @@ function rCustomers(){
     h('div',{style:{display:'grid',gap:'10px'}},
       ...fil.map((c,i)=>{
         const r=st.rounds.find(x=>x.id===c.roundId);
-        const bill=calcBill(c,st.billingStart,28);
+        const bill=calcBill(c,getBillingStart(c),28);
         const onH=(c.holidays||[]).some(h=>(h.type==='range'&&ts>=h.start&&ts<=h.end)||(h.type==='day'&&h.date===ts));
         const isFirst=i===0;const isLast=i===fil.length-1;
         return h('div',{className:'card',style:{display:'flex',gap:'10px',alignItems:'center',padding:'14px 18px'}},
@@ -1163,6 +1167,8 @@ function rRounds(){
 function rBilling(){
   const ce=new Date(st.billingStart);ce.setDate(ce.getDate()+27);
   const ces=ce.toISOString().split('T')[0];
+  const ce2=new Date(st.billingStart2);ce2.setDate(ce2.getDate()+27);
+  const ces2=ce2.toISOString().split('T')[0];
   const over=tod()>ces;
   const dl=Math.ceil((ce-new Date())/86400000);
   return h('div',{},
@@ -1181,8 +1187,12 @@ function rBilling(){
         )
       ),
       h('div',{style:{marginTop:'12px',paddingTop:'10px',borderTop:'1px solid #e8e0d0',display:'flex',gap:'20px',flexWrap:'wrap',alignItems:'flex-end'}},
+        h('div',{style:{marginBottom:'4px'}},h('div',{style:{fontSize:'12px',fontWeight:'bold',color:'#888',letterSpacing:'.5px',textTransform:'uppercase',marginBottom:'6px'}},'🚲 Round 1')),
         h('div',{},lbl('Period Label'),h('input',{className:'fi',style:{marginBottom:'0',width:'200px'},value:st.billingPeriod,oninput:e=>{st.billingPeriod=e.target.value;ps('billingPeriod');}})),
         h('div',{},lbl('Start Date (Monday)'),h('input',{type:'date',className:'fi',style:{marginBottom:'0',width:'160px'},value:st.billingStart,onchange:e=>{st.billingStart=e.target.value;ps('billingStart');render();}})),
+        h('div',{style:{marginTop:'12px',marginBottom:'4px'}},h('div',{style:{fontSize:'12px',fontWeight:'bold',color:'#888',letterSpacing:'.5px',textTransform:'uppercase',marginBottom:'6px'}},'🚲 Round 2')),
+        h('div',{},lbl('Period Label'),h('input',{className:'fi',style:{marginBottom:'0',width:'200px'},value:st.billingPeriod2,oninput:e=>{st.billingPeriod2=e.target.value;ps('billingPeriod2');}})),
+        h('div',{},lbl('Start Date (Monday)'),h('input',{type:'date',className:'fi',style:{marginBottom:'0',width:'160px'},value:st.billingStart2,onchange:e=>{st.billingStart2=e.target.value;ps('billingStart2');render();}})),
         h('div',{style:{fontSize:'12px',color:st.gstEnabled?'#5a3e8e':'#aaa',paddingBottom:'2px'}},st.gstEnabled?'✓ GST '+st.gstRate+'% active':'GST off')
       )
     ),
@@ -1190,7 +1200,7 @@ function rBilling(){
       h('div',{className:'card'},
         h('div',{className:'ct'},'🧾 Customer Bills — 28 Days'),
         ...st.customers.map(c=>{
-          const bill=calcBill(c,st.billingStart,28);
+          const bill=calcBill(c,getBillingStart(c),28);
           return h('div',{style:{padding:'11px 0',borderBottom:'1px solid #e8e0d0'}},
             h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}},
               h('div',{},
@@ -1691,7 +1701,7 @@ function rModals(){
       ),
       h('div',{style:{marginBottom:'14px'}},
         h('div',{style:{fontSize:'12px',fontWeight:'bold',textTransform:'uppercase',letterSpacing:'.5px',color:'#555',marginBottom:'8px'}},'Per customer:'),
-        ...st.customers.map(c=>{const b=calcBill(c,st.billingStart,28);const nb=parseFloat((c.balance-b.grandTotal).toFixed(2));return h('div',{style:{display:'flex',justifyContent:'space-between',padding:'7px 0',borderBottom:'1px solid #e8e0d0',fontSize:'13px'}},h('span',{},c.name),h('div',{style:{textAlign:'right'}},h('span',{style:{color:'#b94040'}},'−'+fmt(b.grandTotal)),h('span',{style:{color:'#888',marginLeft:'8px'}},'→ '),h('span',{style:{fontWeight:'bold',color:nb<0?'#b94040':'#2a5e2a'}},nb<0?'-'+fmt(Math.abs(nb)):'Clear')));})
+        ...st.customers.map(c=>{const b=calcBill(c,getBillingStart(c),28);const nb=parseFloat((c.balance-b.grandTotal).toFixed(2));return h('div',{style:{display:'flex',justifyContent:'space-between',padding:'7px 0',borderBottom:'1px solid #e8e0d0',fontSize:'13px'}},h('span',{},c.name),h('div',{style:{textAlign:'right'}},h('span',{style:{color:'#b94040'}},'−'+fmt(b.grandTotal)),h('span',{style:{color:'#888',marginLeft:'8px'}},'→ '),h('span',{style:{fontWeight:'bold',color:nb<0?'#b94040':'#2a5e2a'}},nb<0?'-'+fmt(Math.abs(nb)):'Clear')));})
       ),
       h('div',{className:'a2',style:{marginBottom:'14px'}},'⚠ This will charge each account and roll to the next period. This cannot be undone.'),
       h('div',{style:{display:'flex',gap:'10px'}},
@@ -1704,8 +1714,8 @@ function rModals(){
   if(st.showBillModal){
     const c=st.customers.find(cu=>cu.id===st.showBillModal);
     if(c){
-      const bill=calcBill(c,st.billingStart,28);
-      const wr=buildWeeklyRows(c,st.billingStart);
+      const bill=calcBill(c,getBillingStart(c),28);
+      const wr=buildWeeklyRows(c,getBillingStart(c));
       ms.push(mod('🧾 Send Bill — '+c.name,h('div',{},
         h('div',{style:{fontSize:'13px',color:'#555',marginBottom:'12px'}},'Bill style is set in ⚙ Settings and applies to all customers.'),
         h('div',{className:'a3',style:{marginBottom:'14px'}},

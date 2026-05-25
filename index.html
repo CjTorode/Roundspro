@@ -334,8 +334,7 @@ const DB = {
         const localC = localCusts.find(lc => lc.id === r.id);
         if(!r.roundId){ r.roundId = (r.round_id && /^[0-9a-f-]{36}$/i.test(r.round_id)) ? r.round_id : (localC ? localC.roundId : null); }
         delete r.round_id;
-        if(r.round_order !== undefined){ r.roundOrder = r.round_order||0; delete r.round_order; }
-        else if(localC && localC.roundOrder !== undefined){ r.roundOrder = localC.roundOrder; }
+        delete r.round_order; // roundOrder managed by applyListOrder()
         delete r.list_order; // listOrder managed by applyListOrder(), not Supabase
         if(r.paper_log !== undefined){ r.paperLog = r.paper_log||[]; delete r.paper_log; }
         if(!r.papers) r.papers = [];
@@ -564,9 +563,9 @@ function applyListOrder(){
   ];
   st.customers = st.customers.map(c => {
     const idx = order.findIndex(n => c.name.toUpperCase() === n.toUpperCase());
-    if(idx !== -1) return {...c, listOrder: idx + 1};
+    if(idx !== -1) return {...c, listOrder: idx + 1, roundOrder: idx + 1};
     const endIdx = endOrder.findIndex(n => c.name.toUpperCase() === n.toUpperCase());
-    if(endIdx !== -1) return {...c, listOrder: 47 + endIdx};
+    if(endIdx !== -1) return {...c, listOrder: 47 + endIdx, roundOrder: 47 + endIdx};
     return c;
   });
 }

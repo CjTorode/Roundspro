@@ -197,11 +197,11 @@ async function sbFetch(method, table, body, params){
 }
 
 async function sbSelect(table, filter){
-  // Explicitly select all columns including camelCase ones
+  // Explicitly select all columns in snake_case
   const cols = table === 'customers' 
-    ? 'id,user_id,name,address,phone,email,balance,papers,delivery_charge,gst_exempt,round_id,"roundId","roundOrder","deliveryCharge","gstExempt","deliveryNote","listOrder",delivery_note,round_order,list_order,holidays,start_date'
+    ? 'id,user_id,name,address,phone,email,balance,papers,delivery_charge,gst_exempt,round_id,round_order,list_order,delivery_note,holidays,paper_log'
     : table === 'stock'
-    ? 'id,user_id,title,type,freq,stock,sell_price,cost_price,gst_applicable,delivery_days,"sellPrice","costPrice","gstApplicable","deliveryDays","priceLog"'
+    ? 'id,user_id,title,type,freq,stock,sell_price,cost_price,gst_applicable,delivery_days,price_log'
     : '*';
   return await sbFetch('GET', table, null, 'select=' + cols + '&user_id=eq.' + USER_ID + (filter||'') + '&limit=1000');
 }
@@ -226,19 +226,24 @@ const DB = {
   async saveCustomers(){
     if(!getSB()) return;
     try {
-      const rows = st.customers.map(c => {
-        const {user_id, ...rest} = c;
-        return {
-          ...rest,
-          user_id: USER_ID,
-          delivery_charge: c.deliveryCharge,
-          delivery_note: c.deliveryNote||'',
-          gst_exempt: c.gstExempt||false,
-          round_id: c.roundId||null,
-          round_order: c.roundOrder||0,
-          list_order: c.listOrder||0,
-        };
-      });
+      const rows = st.customers.map(c => ({
+        id: c.id,
+        user_id: USER_ID,
+        name: c.name,
+        address: c.address,
+        phone: c.phone||'',
+        email: c.email||'',
+        balance: c.balance||0,
+        papers: c.papers||[],
+        holidays: c.holidays||[],
+        paper_log: c.paperLog||[],
+        delivery_charge: c.deliveryCharge||0,
+        delivery_note: c.deliveryNote||'',
+        gst_exempt: c.gstExempt||false,
+        round_id: c.roundId||null,
+        round_order: c.roundOrder||0,
+        list_order: c.listOrder||0,
+      }));
       await sbUpsert('customers', rows);
     } catch(e){ console.warn('saveCustomers:', e.message); }
     S.set('customers', st.customers);
@@ -313,11 +318,12 @@ const DB = {
         if(r.delivery_note !== undefined){ r.deliveryNote = r.delivery_note||''; delete r.delivery_note; }
         if(r.gst_exempt !== undefined){ r.gstExempt = r.gst_exempt; delete r.gst_exempt; }
         if(!r.roundId && r.round_id !== undefined){ r.roundId = r.round_id; } delete r.round_id;
-        delete r.round_order; // use "roundOrder" camelCase column instead
+        if(r.round_order !== undefined){ r.roundOrder = r.round_order; delete r.round_order; }
         if(r.list_order !== undefined){ r.listOrder = r.list_order; delete r.list_order; }
-        if(r.start_date !== undefined){ r.startDate = r.start_date; delete r.start_date; }
+        if(r.paper_log !== undefined){ r.paperLog = r.paper_log||[]; delete r.paper_log; }
         if(!r.papers) r.papers = [];
         if(!r.holidays) r.holidays = [];
+        if(!r.paperLog) r.paperLog = [];
         return r;
       }); S.set('customers',st.customers); }
       if(stocks && stocks.length){ st.stock = stocks.map(r=>{
@@ -1779,7 +1785,7 @@ function rModals(){
         ))
       ),
       lbl('Delivery Round'),
-      h('select',{className:'fi',value:ec.roundId||'',onchange:e=>st.showEditCustomer.roundId=parseInt(e.target.value)||null},
+      h('select',{className:'fi',value:ec.roundId||'',onchange:e=>st.showEditCustomer.roundId=e.target.value||null},
         h('option',{value:''},'— No round assigned —'),
         ...st.rounds.map(r=>h('option',{value:r.id},r.name+' ('+r.area+')'))
       ),

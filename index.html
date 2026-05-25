@@ -234,11 +234,14 @@ const DB = {
         delivery_charge: c.deliveryCharge||0,
         delivery_note: c.deliveryNote||'',
         gst_exempt: c.gstExempt||false,
-        round_id: c.roundId||null,
         round_order: c.roundOrder||0,
         list_order: c.listOrder||0,
       }));
       await sbUpsert('customers', rows);
+      // Also persist roundId/listOrder/roundOrder as a settings entry (since round_id col is uuid type)
+      const roundMap = {};
+      st.customers.forEach(c => { roundMap[c.id] = {roundId:c.roundId||null, roundOrder:c.roundOrder||0, listOrder:c.listOrder||0}; });
+      await sbUpsert('settings', [{user_id:USER_ID, key:'customerRoundMap', value:JSON.stringify(roundMap)}]);
     } catch(e){ console.warn('saveCustomers:', e.message); }
     S.set('customers', st.customers);
   },
@@ -316,15 +319,22 @@ const DB = {
         sbSelect('payments'),
         sbSelect('settings')
       ]);
-      if(custs && custs.length){ st.customers = custs.map(r=>{
+      if(custs && custs.length){
+        const localCusts = S.get('customers', []);
+        st.customers = custs.map(r=>{
         delete r.user_id;
         // Map snake_case DB columns to camelCase app fields
         if(r.delivery_charge !== undefined){ r.deliveryCharge = parseFloat(r.delivery_charge); delete r.delivery_charge; }
         if(r.delivery_note !== undefined){ r.deliveryNote = r.delivery_note||''; delete r.delivery_note; }
         if(r.gst_exempt !== undefined){ r.gstExempt = r.gst_exempt; delete r.gst_exempt; }
-        if(!r.roundId && r.round_id !== undefined){ r.roundId = r.round_id; } delete r.round_id;
-        if(r.round_order !== undefined){ r.roundOrder = r.round_order; delete r.round_order; }
-        if(r.list_order !== undefined){ r.listOrder = r.list_order; delete r.list_order; }
+        // round_id in Supabase is uuid type — can't store string IDs there, use localStorage fallback
+        const localC = localCusts.find(lc => lc.id === r.id);
+        if(!r.roundId){ r.roundId = (r.round_id && /^[0-9a-f-]{36}$/i.test(r.round_id)) ? r.round_id : (localC ? localC.roundId : null); }
+        delete r.round_id;
+        if(r.round_order !== undefined){ r.roundOrder = r.round_order||0; delete r.round_order; }
+        else if(localC && localC.roundOrder !== undefined){ r.roundOrder = localC.roundOrder; }
+        if(r.list_order !== undefined){ r.listOrder = r.list_order||0; delete r.list_order; }
+        else if(localC && localC.listOrder !== undefined){ r.listOrder = localC.listOrder; }
         if(r.paper_log !== undefined){ r.paperLog = r.paper_log||[]; delete r.paper_log; }
         if(!r.papers) r.papers = [];
         if(!r.holidays) r.holidays = [];
@@ -345,13 +355,24 @@ const DB = {
       if(rounds && rounds.length){ st.rounds = rounds.map(r=>{delete r.user_id;return r;}); S.set('rounds',st.rounds); }
       if(pays && pays.length){ st.payments = pays.map(r=>{delete r.user_id;return r;}); S.set('payments',st.payments); }
       if(settings){
+        let roundMap = null;
         settings.forEach(row=>{
           try{
             const val=JSON.parse(row.value);
+            if(row.key === 'customerRoundMap'){ roundMap = val; return; }
             if(DB.SETTINGS_KEYS.includes(row.key)) st[row.key]=val;
             S.set(row.key,val);
           }catch(e){}
         });
+        // Apply round map to customers (overcomes uuid column limitation)
+        if(roundMap){
+          st.customers = st.customers.map(c => {
+            const m = roundMap[c.id];
+            if(!m) return c;
+            return {...c, roundId: m.roundId||c.roundId||null, roundOrder: m.roundOrder||c.roundOrder||0, listOrder: m.listOrder||c.listOrder||0};
+          });
+          S.set('customers', st.customers);
+        }
       }
       render();
       toast('☁ Synced from Supabase');

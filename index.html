@@ -378,10 +378,12 @@ const DB = {
         S.set('customers', st.customers);
       }
       render();
-      toast('☁ Synced from Supabase');
+      if(!DB._silent) toast('☁ Synced from Supabase');
+      DB._silent = false;
     } catch(e){
       console.warn('DB.load error:', e);
-      toast('⚠ Sync failed: ' + e.message);
+      if(!DB._silent) toast('⚠ Sync failed: ' + e.message);
+      DB._silent = false;
     }
   }
 };
@@ -452,6 +454,13 @@ async function startApp(){
   st.customers = S.get('customers', IR ? [] : []);
   render(); // Show app immediately
   await DB.load(); // Fetch fresh from Supabase
+  // Auto-sync every 60 seconds (silent)
+  setInterval(async () => {
+    if(getSB()){
+      DB._silent = true;
+      await DB.load();
+    }
+  }, 60000);
 }
 
 const IR=[{id:1,name:'Elm Street Area',area:'North Side'},{id:2,name:'Maple Road Area',area:'South Side'}];

@@ -371,8 +371,10 @@ const DB = {
             if(!m) return c;
             return {...c, roundId: m.roundId||c.roundId||null, roundOrder: m.roundOrder||c.roundOrder||0, listOrder: m.listOrder||c.listOrder||0};
           });
-          S.set('customers', st.customers);
         }
+        // Re-apply hardcoded list order after sync
+        applyListOrder();
+        S.set('customers', st.customers);
       }
       render();
       toast('☁ Synced from Supabase');
@@ -522,6 +524,52 @@ const st={
   newStock:{title:'',type:'paper',freq:'daily',deliveryDays:[1,2,3,4,5],costPrice:'',sellPrice:'',stock:'',gstApplicable:false},
   newRound:{name:'',area:''},paymentAmount:'',paymentNote:'',showPaperLog:null,paperChangeDate:'',paperChangeTitle:'',paperChangeAction:'add',newPriceEntry:'',newPriceDate:'',newCustomerInsertAfter:'end',
 };
+
+// ── HARDCODED LIST ORDER (set May 2026) ──────────────────────────
+function applyListOrder(){
+  const order = [
+    'MR & MRS RICHMOND',      // 1
+    'PALMA',                   // 2
+    'MR BEHAN',                // 3
+    'MR & MRS ATKIN',          // 4
+    'MR & MRS WRIGHT',         // 5
+    'MR & MRS KAINES',         // 6
+    'MRS SAVIDENT',            // 7
+    'NORTH COTTAGE',           // 8
+    'LA FOLIE',                // 9
+    'SANTA ANNA',              // 10
+    'MR & MRS ENGLAND',        // 11
+    'MRS WRIGHT',              // 12
+    'MR & MRS COHU',           // 13
+    'MOUNT LOFTY',             // 14
+    'MR & MRS COLLAS',         // 15
+    'MR J DOMAILLE',           // 16
+    'MR & MRS DE LA RUE',      // 17
+    'MR & MRS PATTEN',         // 18
+    'MR & MRS LE CHEMINANT',   // 19
+    'MR & MRS LE CRAS',        // 20
+    'THE WILLOWS',             // 21
+    'MRS MCCOLL',              // 22
+    '13 COURTIL LE CLEMENT',   // 23
+    'MR & MRS HOUCHARD',       // 24
+    'ROOM 227',                // 25
+    'D OGIER',                 // 26
+    'MR J HODKINSON',          // 27
+  ];
+  const endOrder = [
+    'MR & MRS J TOLCHER',      // 47
+    'MR & MRS CREED',          // 48
+  ];
+  st.customers = st.customers.map(c => {
+    const idx = order.findIndex(n => c.name.toUpperCase() === n.toUpperCase());
+    if(idx !== -1) return {...c, listOrder: idx + 1};
+    const endIdx = endOrder.findIndex(n => c.name.toUpperCase() === n.toUpperCase());
+    if(endIdx !== -1) return {...c, listOrder: 47 + endIdx};
+    return c;
+  });
+}
+applyListOrder();
+
 // ps(k) — persist a single key. Routes to Supabase for relational data, settings table for scalars.
 function ps(k){
   S.set(k,st[k]); // always keep local cache in sync

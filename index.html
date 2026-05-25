@@ -197,13 +197,7 @@ async function sbFetch(method, table, body, params){
 }
 
 async function sbSelect(table, filter){
-  // Explicitly select all columns in snake_case
-  const cols = table === 'customers' 
-    ? 'id,user_id,name,address,phone,email,balance,papers,delivery_charge,gst_exempt,round_id,round_order,list_order,delivery_note,holidays,paper_log'
-    : table === 'stock'
-    ? 'id,user_id,title,type,freq,stock,sell_price,cost_price,gst_applicable,delivery_days,price_log'
-    : '*';
-  return await sbFetch('GET', table, null, 'select=' + cols + '&user_id=eq.' + USER_ID + (filter||'') + '&limit=1000');
+  return await sbFetch('GET', table, null, 'select=*&user_id=eq.' + USER_ID + (filter||'') + '&limit=1000');
 }
 
 async function sbUpsert(table, rows){
@@ -236,7 +230,7 @@ const DB = {
         balance: c.balance||0,
         papers: c.papers||[],
         holidays: c.holidays||[],
-        paper_log: c.paperLog||[],
+        // paper_log omitted — add column to Supabase if needed
         delivery_charge: c.deliveryCharge||0,
         delivery_note: c.deliveryNote||'',
         gst_exempt: c.gstExempt||false,
@@ -258,7 +252,18 @@ const DB = {
   async saveStock(){
     if(!getSB()) return;
     try {
-      const rows = st.stock.map(s => { const {user_id, ...rest} = s; return {...rest, user_id: USER_ID}; });
+      const rows = st.stock.map(s => ({
+        id: s.id,
+        user_id: USER_ID,
+        title: s.title,
+        type: s.type,
+        freq: s.freq,
+        stock: s.stock||0,
+        sell_price: s.sellPrice||0,
+        cost_price: s.costPrice||0,
+        gst_applicable: s.gstApplicable||false,
+        delivery_days: s.deliveryDays||[],
+      }));
       await sbUpsert('stock', rows);
     } catch(e){ console.warn('saveStock:', e.message); }
     S.set('stock', st.stock);

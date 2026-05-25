@@ -409,8 +409,14 @@ function showSetupErr(msg){
 }
 
 async function startApp(){
-  render(); // Show app immediately from localStorage
-  await DB.load(); // Then sync from Supabase (re-renders on success)
+  // Clear customer and rounds cache to always get fresh data from Supabase
+  localStorage.removeItem('cjt_customers');
+  localStorage.removeItem('cjt_rounds');
+  localStorage.removeItem('cjt_payments');
+  // Reload st from localStorage (will use defaults since cache cleared)
+  st.customers = S.get('customers', IR ? [] : []);
+  render(); // Show app immediately
+  await DB.load(); // Fetch fresh from Supabase
 }
 
 const IR=[{id:1,name:'Elm Street Area',area:'North Side'},{id:2,name:'Maple Road Area',area:'South Side'}];

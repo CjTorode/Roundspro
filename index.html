@@ -333,8 +333,7 @@ const DB = {
         delete r.round_id;
         if(r.round_order !== undefined){ r.roundOrder = r.round_order||0; delete r.round_order; }
         else if(localC && localC.roundOrder !== undefined){ r.roundOrder = localC.roundOrder; }
-        if(r.list_order !== undefined){ r.listOrder = r.list_order||0; delete r.list_order; }
-        else if(localC && localC.listOrder !== undefined){ r.listOrder = localC.listOrder; }
+        delete r.list_order; // listOrder managed by applyListOrder(), not Supabase
         if(r.paper_log !== undefined){ r.paperLog = r.paper_log||[]; delete r.paper_log; }
         if(!r.papers) r.papers = [];
         if(!r.holidays) r.holidays = [];
@@ -369,7 +368,7 @@ const DB = {
           st.customers = st.customers.map(c => {
             const m = roundMap[c.id];
             if(!m) return c;
-            return {...c, roundId: m.roundId||c.roundId||null, roundOrder: m.roundOrder||c.roundOrder||0, listOrder: m.listOrder||c.listOrder||0};
+            return {...c, roundId: m.roundId||c.roundId||null, roundOrder: m.roundOrder||c.roundOrder||0};
           });
         }
         // Re-apply hardcoded list order after sync

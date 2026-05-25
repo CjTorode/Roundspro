@@ -237,6 +237,7 @@ const DB = {
         delivery_charge: c.deliveryCharge||0,
         delivery_note: c.deliveryNote||'',
         gst_exempt: c.gstExempt||false,
+        round_id: c.roundId||null,
         round_order: c.roundOrder||0,
         list_order: c.listOrder||0,
       }));
@@ -330,10 +331,9 @@ const DB = {
         if(r.delivery_charge !== undefined){ r.deliveryCharge = parseFloat(r.delivery_charge); delete r.delivery_charge; }
         if(r.delivery_note !== undefined){ r.deliveryNote = r.delivery_note||''; delete r.delivery_note; }
         if(r.gst_exempt !== undefined){ r.gstExempt = r.gst_exempt; delete r.gst_exempt; }
-        // round_id in Supabase is uuid type — can't store string IDs there, use localStorage fallback
         const localC = localCusts.find(lc => lc.id === r.id);
-        if(!r.roundId){ r.roundId = (r.round_id && /^[0-9a-f-]{36}$/i.test(r.round_id)) ? r.round_id : (localC ? localC.roundId : null); }
-        delete r.round_id;
+        if(r.round_id !== undefined){ r.roundId = r.round_id||null; delete r.round_id; }
+        else if(!r.roundId && localC){ r.roundId = localC.roundId||null; }
         delete r.round_order; // roundOrder managed by applyListOrder()
         delete r.list_order; // listOrder managed by applyListOrder(), not Supabase
         if(r.paper_log !== undefined){ r.paperLog = r.paper_log||[]; delete r.paper_log; }

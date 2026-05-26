@@ -590,6 +590,7 @@ const st={
   shopFromEmail: S.get('shopFromEmail', 'Craigpapers@icloud.com'),
   shopEditWeek: null,
   shopViewWeek: null,
+  billingRoundFilter: 'all',
 };
 
 // ── HARDCODED LIST ORDER (set May 2026) ──────────────────────────
@@ -977,8 +978,8 @@ function emailBill(cid){
   window.location.href='mailto:'+c.email+'?subject='+encodeURIComponent((biz.name||'C J Torode')+' — Invoice '+period)+'&body='+encodeURIComponent(body);
 }
 
-function emailAllBills(){
-  const allCusts=isDriver()?st.customers.filter(c=>c.roundId==='round-2'):st.customers;
+function emailAllBills(custList){
+  const allCusts = custList || (isDriver()?st.customers.filter(c=>c.roundId==='round-2'):st.customers);
   const withEmail=allCusts.filter(c=>c.email);
   const without=allCusts.filter(c=>!c.email);
   if(!withEmail.length){alert('No customers have email addresses on file.');return;}
@@ -1380,22 +1381,47 @@ function rBilling(){
         }),
         h('div',{style:{marginTop:'14px',paddingTop:'12px',borderTop:'2px solid #1a1a1a'}},
           h('div',{style:{display:'flex',justifyContent:'space-between',fontWeight:'bold',marginBottom:'10px'}},h('span',{},'Total (28 days)'),h('span',{},fmt(st.customers.reduce((s,c)=>s+calcBill(c,st.billingStart,28).grandTotal,0)))),
-          h('div',{style:{display:'flex',gap:'8px',marginTop:'14px',paddingTop:'12px',borderTop:'2px solid #1a1a1a'}},
+          // Round filter for billing
+          h('div',{style:{display:'flex',gap:'6px',marginBottom:'10px',flexWrap:'wrap'}},
+            h('div',{style:{fontSize:'12px',color:'#888',alignSelf:'center',marginRight:'4px'}},'Print/Email:'),
+            ...[{id:'all',label:'All Rounds'},...st.rounds].map(r=>
+              h('button',{
+                style:{padding:'5px 12px',fontSize:'12px',fontFamily:'Georgia,serif',borderRadius:'3px',cursor:'pointer',
+                  background:(st.billingRoundFilter||'all')===(r.id||'all')?'#1a1a1a':'#f0ebe0',
+                  color:(st.billingRoundFilter||'all')===(r.id||'all')?'#c8a84b':'#555',
+                  border:'1px solid #ccc',fontWeight:(st.billingRoundFilter||'all')===(r.id||'all')?'bold':'normal'},
+                onclick:()=>{st.billingRoundFilter=r.id||'all';render();}
+              }, r.label||r.name)
+            )
+          ),
+          h('div',{style:{display:'flex',gap:'8px',marginTop:'6px',paddingTop:'12px',borderTop:'1px solid #e8e0d0'}},
             btn('b1',{style:{flex:'1'}},'🖨 Print Bills (no email)',()=>{
-              const toPrint=(isDriver()?st.customers.filter(c=>c.roundId==='round-2'):st.customers).filter(function(c){return !c.email;});
-              const skipped=st.customers.filter(function(c){return c.email;});
-              if(!toPrint.length){alert('All customers have email addresses — nothing to print.\n\nUse "📧 Email ALL Bills" to send to everyone.');return;}
+              const allC = isDriver()?st.customers.filter(c=>c.roundId==='round-2'):st.customers;
+              const roundFiltered = (st.billingRoundFilter&&st.billingRoundFilter!=='all') ? allC.filter(c=>c.roundId===st.billingRoundFilter) : allC;
+              const toPrint = roundFiltered.filter(function(c){return !c.email;});
+              const skipped = roundFiltered.filter(function(c){return c.email;});
+              if(!toPrint.length){alert('Nothing to print in this selection.\n\nAll customers have email addresses — use "📧 Email ALL Bills" instead.');return;}
               toPrint.forEach(function(c){printBill(c.id);});
               if(skipped.length)toast('🖨 Printing '+toPrint.length+' bill'+(toPrint.length!==1?'s':'')+' · Skipped '+skipped.length+' (have email)');
+              else toast('🖨 Printing '+toPrint.length+' bill'+(toPrint.length!==1?'s':''));
             }),
-            btn('b4',{style:{flex:'1'}},'📧 Email ALL Bills',emailAllBills)
+            btn('b4',{style:{flex:'1'}},'📧 Email ALL Bills',()=>{
+              const allC = isDriver()?st.customers.filter(c=>c.roundId==='round-2'):st.customers;
+              const roundFiltered = (st.billingRoundFilter&&st.billingRoundFilter!=='all') ? allC.filter(c=>c.roundId===st.billingRoundFilter) : allC;
+              const toEmail = roundFiltered.filter(function(c){return c.email;});
+              if(!toEmail.length){alert('No customers with email addresses in this selection.');return;}
+              emailAllBills(toEmail);
+            })
           ),
           (function(){
-            var noEmail=st.customers.filter(function(c){return !c.email;}).length;
-            var hasEmail=st.customers.filter(function(c){return c.email;}).length;
-            if(!st.customers.length)return null;
+            const allC = isDriver()?st.customers.filter(c=>c.roundId==='round-2'):st.customers;
+            const roundFiltered = (st.billingRoundFilter&&st.billingRoundFilter!=='all') ? allC.filter(c=>c.roundId===st.billingRoundFilter) : allC;
+            var noEmail=roundFiltered.filter(function(c){return !c.email;}).length;
+            var hasEmail=roundFiltered.filter(function(c){return c.email;}).length;
+            if(!roundFiltered.length)return null;
+            const roundName = (st.billingRoundFilter&&st.billingRoundFilter!=='all') ? (st.rounds.find(r=>r.id===st.billingRoundFilter)||{name:'Selected Round'}).name : 'All Rounds';
             return h('div',{style:{fontSize:'12px',color:'#888',marginTop:'8px',textAlign:'center'}},
-              '🖨 '+noEmail+' to print · 📧 '+hasEmail+' to email'+(hasEmail>0?' — use Email ALL Bills above':'')
+              roundName+': 🖨 '+noEmail+' to print · 📧 '+hasEmail+' to email'+(hasEmail>0?' — use Email ALL Bills above':'')
             );
           })()
         )

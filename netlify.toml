@@ -13,8 +13,7 @@
 
 [build.environment]
   NODE_VERSION = "20"
-[functions]
-  timeout = 26
+
 
 # — Redirects —
 # Single-page app fallback (important once you add routing)

@@ -537,6 +537,14 @@ const st={
   customerRoundFilter:'all',
   newStock:{title:'',type:'paper',freq:'daily',deliveryDays:[1,2,3,4,5],costPrice:'',sellPrice:'',stock:'',gstApplicable:false},
   newRound:{name:'',area:''},paymentAmount:'',paymentNote:'',showPaperLog:null,paperChangeDate:'',paperChangeTitle:'',paperChangeAction:'add',newPriceEntry:'',newPriceDate:'',newCustomerInsertAfter:'end',
+  // ── SHOP MODULE ──────────────────────────────────────────────────
+  shopWeeks: S.get('shopWeeks', []),
+  shopDiscountPaper: S.get('shopDiscountPaper', 8),
+  shopDiscountMag: S.get('shopDiscountMag', 10),
+  shopEmail: S.get('shopEmail', 'Zac@alliance.gg'),
+  shopFromEmail: S.get('shopFromEmail', 'Craigpapers@icloud.com'),
+  shopEditWeek: null,
+  shopViewWeek: null,
 };
 
 // ── HARDCODED LIST ORDER (set May 2026) ──────────────────────────
@@ -2016,10 +2024,727 @@ function rModals(){
   return ms;
 }
 
+// ── SHOP MODULE ───────────────────────────────────────────────────
+// Default paper & magazine lists matching Alliance supply sheet
+const SHOP_DAILY = [
+  {title:'Mirror',   weekPrice:2.00, satPrice:3.10, sunPrice:3.40},
+  {title:'Mail',     weekPrice:1.80, satPrice:2.20, sunPrice:2.80},
+  {title:'Sun',      weekPrice:1.70, satPrice:2.60, sunPrice:3.20},
+  {title:'Express',  weekPrice:2.00, satPrice:3.00, sunPrice:3.40},
+  {title:'Star',     weekPrice:1.50, satPrice:2.10, sunPrice:2.40},
+  {title:'Times',    weekPrice:3.40, satPrice:4.50, sunPrice:5.00},
+  {title:'The I',    weekPrice:1.20, satPrice:2.00, sunPrice:0},
+  {title:'People',   weekPrice:0,    satPrice:0,    sunPrice:3.40},
+  {title:'Guernsey Press', weekPrice:1.40, satPrice:1.40, sunPrice:0},
+];
+const SHOP_MAGS_DEFAULT = [
+  'Bella','Best','Chat','Closer','Good Food','Heat','Hello!','Inside Soap',
+  'Love It!','Motor Cycle News','My Weekly','Peoples Friend','Radio Times',
+  'Real People','TAB Mini Arrowords Collection','Take A Break',
+  "That's Life Weekly",'Total TV Guide','TV & Streaming Weekly',
+  'TV Choice','Whats On TV Weekly','Woman','Womans Own','Womans Weekly','Yours'
+];
+
+function newBlankWeek(){
+  const now = new Date();
+  // Find Monday of current week
+  const day = now.getDay();
+  const mon = new Date(now);
+  mon.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
+  const fmt = d => d.toISOString().split('T')[0];
+  const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+  const days = ['mon','tue','wed','thu','fri','sat','sun'];
+  const papers = SHOP_DAILY.map(p => {
+    const dayData = {};
+    days.forEach(d => { dayData[d] = {del:'', ret:''}; });
+    return { title: p.title, weekPrice: p.weekPrice, satPrice: p.satPrice, sunPrice: p.sunPrice, days: dayData };
+  });
+  const mags = (S.get('shopMagList', SHOP_MAGS_DEFAULT)).map(title => ({
+    title, delQty:'', delPrice:'', retQty:'', retPrice:''
+  }));
+  return {
+    id: Date.now(),
+    weekStart: fmt(mon),
+    weekEnd: fmt(sun),
+    invoiceNum: Date.now() % 100000,
+    papers,
+    mags,
+    overdue: 0,
+    vouchers: 0,
+    note: '',
+    saved: false
+  };
+}
+
+function shopCalcWeek(wk){
+  const days = ['mon','tue','wed','thu','fri','sat','sun'];
+  let dailyTotal = 0, satTotal = 0, sunTotal = 0;
+  wk.papers.forEach(p => {
+    // Mon-Fri
+    ['mon','tue','wed','thu','fri'].forEach(d => {
+      const del = parseFloat(p.days[d]?.del) || 0;
+      const ret = parseFloat(p.days[d]?.ret) || 0;
+      if(p.weekPrice > 0) dailyTotal += (del - ret) * p.weekPrice;
+    });
+    // Sat
+    const sdel = parseFloat(p.days.sat?.del) || 0;
+    const sret = parseFloat(p.days.sat?.ret) || 0;
+    if(p.satPrice > 0) satTotal += (sdel - sret) * p.satPrice;
+    // Sun
+    const sudel = parseFloat(p.days.sun?.del) || 0;
+    const suret = parseFloat(p.days.sun?.ret) || 0;
+    if(p.sunPrice > 0) sunTotal += (sudel - suret) * p.sunPrice;
+  });
+  let magDel = 0, magRet = 0;
+  wk.mags.forEach(m => {
+    magDel += (parseFloat(m.delQty)||0) * (parseFloat(m.delPrice)||0);
+    magRet += (parseFloat(m.retQty)||0) * (parseFloat(m.retPrice)||0);
+  });
+  const totalPapers = dailyTotal + satTotal + sunTotal;
+  const totalMags = magDel - magRet;
+  const discPaper = totalPapers * (st.shopDiscountPaper / 100);
+  const discMag = totalMags * (st.shopDiscountMag / 100);
+  const totalDiscount = discPaper + discMag;
+  const overdue = parseFloat(wk.overdue)||0;
+  const vouchers = parseFloat(wk.vouchers)||0;
+  const totalDue = totalPapers + totalMags - totalDiscount - vouchers + overdue;
+  return { dailyTotal, satTotal, sunTotal, totalPapers, magDel, magRet, totalMags, discPaper, discMag, totalDiscount, totalDue };
+}
+
+function shopInvoiceHTML(wk, biz){
+  const c = shopCalcWeek(wk);
+  const fmt = v => '£' + Math.abs(v).toFixed(2);
+  const fmtDate = s => { if(!s) return ''; const d = new Date(s); return d.toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'}); };
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Invoice ${wk.invoiceNum}</title>
+<style>
+  body{font-family:Georgia,serif;max-width:680px;margin:40px auto;padding:0 20px;color:#1a1a1a;font-size:14px}
+  .hdr{text-align:center;margin-bottom:24px;padding-bottom:16px;border-bottom:3px solid #c8a84b}
+  .hdr h1{font-size:13px;letter-spacing:3px;text-transform:uppercase;color:#888;margin-bottom:4px}
+  .hdr h2{font-size:22px;font-weight:bold;letter-spacing:1px;margin-bottom:2px}
+  .hdr p{font-size:12px;color:#666;margin:2px 0}
+  .inv-box{display:flex;justify-content:space-between;margin:16px 0;font-size:13px}
+  .inv-num{font-size:20px;font-weight:bold}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13px}
+  th{background:#1a1a1a;color:#c8a84b;padding:7px 10px;text-align:left;font-size:11px;letter-spacing:.5px;text-transform:uppercase}
+  td{padding:6px 10px;border-bottom:1px solid #eee}
+  tr:last-child td{border-bottom:none}
+  .tot-row td{font-weight:bold;background:#f5f0e8;border-top:2px solid #c8a84b}
+  .section{font-size:11px;font-weight:bold;text-transform:uppercase;letter-spacing:.5px;color:#888;margin:18px 0 6px}
+  .grand{font-size:18px;font-weight:bold;text-align:right;padding:14px 10px;background:#1a1a1a;color:#c8a84b;margin-top:12px}
+  .footer{text-align:center;font-size:12px;color:#888;margin-top:24px;padding-top:14px;border-top:2px solid #c8a84b}
+  .to-box{border:1px solid #ddd;padding:12px 16px;margin:12px 0;font-size:13px;background:#fafafa}
+  .slash{border-top:1px dashed #bbb;margin:20px 0}
+  .remit{font-size:12px;color:#555}
+</style></head><body>
+<div class="hdr">
+  <h1>Newsagent</h1>
+  <h2>${biz.name || 'C J Torode'}</h2>
+  <p>${biz.address || 'Sablonierre, Grandes Rocques, Castel, Guernsey. GY5 7FR'}</p>
+  ${biz.phone ? '<p>Tel: '+biz.phone+'</p>' : ''}
+  <p style="font-size:12px;color:#888">Craigpapers@icloud.com</p>
+</div>
+<div class="inv-box">
+  <div><div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#888">Invoice</div><div class="inv-num">${wk.invoiceNum}</div>
+  <div style="font-size:12px;color:#555;margin-top:4px">Week ending ${fmtDate(wk.weekEnd)}</div></div>
+  <div style="text-align:right"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#888">Dated</div>
+  <div style="font-size:15px;font-weight:bold">${fmtDate(wk.weekEnd)}</div></div>
+</div>
+<div class="to-box"><strong>TO: ALLIANCE LTD</strong></div>
+<div class="section">Newspapers</div>
+<table>
+  <tr><th>Section</th><th style="text-align:right">Amount</th></tr>
+  <tr><td>Daily Newspapers (Mon–Fri) as per supply sheet</td><td style="text-align:right">${fmt(c.dailyTotal)}</td></tr>
+  <tr><td>Saturday Newspapers as per supply sheet</td><td style="text-align:right">${fmt(c.satTotal)}</td></tr>
+  <tr><td>Sunday Newspapers as per supply sheet</td><td style="text-align:right">${fmt(c.sunTotal)}</td></tr>
+  <tr class="tot-row"><td>TOTAL NEWSPAPERS</td><td style="text-align:right">${fmt(c.totalPapers)}</td></tr>
+</table>
+<div class="section">Magazines</div>
+<table>
+  <tr><th>Section</th><th style="text-align:right">Amount</th></tr>
+  <tr><td>Magazines Delivered as per supply sheet</td><td style="text-align:right">${fmt(c.magDel)}</td></tr>
+  <tr><td>Magazines Returned as per supply sheet</td><td style="text-align:right">−${fmt(c.magRet)}</td></tr>
+  <tr class="tot-row"><td>TOTAL MAGAZINES (NET)</td><td style="text-align:right">${fmt(c.totalMags)}</td></tr>
+</table>
+<div class="section">Summary</div>
+<table>
+  <tr><th>Item</th><th style="text-align:right">Amount</th></tr>
+  <tr><td>Total Newspapers &amp; Magazines</td><td style="text-align:right">${fmt(c.totalPapers + c.totalMags)}</td></tr>
+  <tr><td>Less Discount Newspapers (${st.shopDiscountPaper}%)</td><td style="text-align:right">−${fmt(c.discPaper)}</td></tr>
+  <tr><td>Less Discount Magazines (${st.shopDiscountMag}%)</td><td style="text-align:right">−${fmt(c.discMag)}</td></tr>
+  ${c.totalDiscount > 0 ? '<tr><td><strong>TOTAL DISCOUNT</strong></td><td style="text-align:right"><strong>−'+fmt(c.totalDiscount)+'</strong></td></tr>' : ''}
+  ${parseFloat(wk.overdue) > 0 ? '<tr><td>Overdue</td><td style="text-align:right">'+fmt(parseFloat(wk.overdue))+'</td></tr>' : ''}
+  ${parseFloat(wk.vouchers) > 0 ? '<tr><td>Vouchers</td><td style="text-align:right">−'+fmt(parseFloat(wk.vouchers))+'</td></tr>' : ''}
+</table>
+<div class="grand">TOTAL DUE: ${fmt(c.totalDue)}</div>
+${wk.note ? '<p style="font-size:13px;color:#555;margin-top:12px">Note: '+wk.note+'</p>' : ''}
+<div class="footer">
+  Please retain this invoice for your records<br>
+  <strong>THANK YOU FOR YOUR CUSTOM</strong>
+  ${biz.paymentInfo ? '<div style="margin-top:8px;font-size:11px">'+biz.paymentInfo.replace(/\n/g,'<br>')+'</div>' : ''}
+</div>
+<div class="slash"></div>
+<div class="remit">
+  <p><strong>Return this slip with payment</strong></p>
+  <p>FROM: ALLIANCE LTD &nbsp;&nbsp; TO: ${biz.name || 'Craig Torode'}, ${biz.address || 'Sablonierre, Grandes Rocques, Castel, Guernsey'}</p>
+  <p>Invoice ${wk.invoiceNum} &nbsp;|&nbsp; Week ending ${fmtDate(wk.weekEnd)} &nbsp;|&nbsp; <strong>TOTAL DUE: ${fmt(c.totalDue)}</strong></p>
+</div>
+</body></html>`;
+}
+
+function rShop(){
+  const wks = st.shopWeeks;
+  const biz = st.bizDetails;
+
+  // ── EDIT VIEW ────────────────────────────────────────────────────
+  if(st.shopEditWeek !== null){
+    const wk = st.shopWeeks.find(w => w.id === st.shopEditWeek);
+    if(!wk){ st.shopEditWeek = null; render(); return h('div',{}); }
+    const save = () => { S.set('shopWeeks', st.shopWeeks); };
+    const days = ['mon','tue','wed','thu','fri','sat','sun'];
+    const dayLabels = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    const c = shopCalcWeek(wk);
+    const fmt2 = v => v === 0 ? '—' : '£'+v.toFixed(2);
+
+    // Camera scan helper (uses Anthropic Vision API if available)
+    const doScan = async () => {
+      const inp = document.createElement('input');
+      inp.type = 'file'; inp.accept = 'image/*'; inp.capture = 'environment';
+      inp.onchange = async e => {
+        const file = e.target.files[0]; if(!file) return;
+        const toastEl = document.getElementById('scan-toast');
+        if(toastEl) toastEl.style.display='block';
+        const reader = new FileReader();
+        reader.onload = async ev => {
+          const b64 = ev.target.result.split(',')[1];
+          try {
+            const resp = await fetch('https://api.anthropic.com/v1/messages', {
+              method:'POST',
+              headers:{'Content-Type':'application/json'},
+              body: JSON.stringify({
+                model:'claude-sonnet-4-20250514',
+                max_tokens:2000,
+                messages:[{
+                  role:'user',
+                  content:[
+                    {type:'image',source:{type:'base64',media_type:file.type||'image/jpeg',data:b64}},
+                    {type:'text',text:`This is a handwritten newsagent weekly supply/delivery sheet written by Craig Torode, Guernsey. Read it carefully using ALL of the following rules.
+
+════════════════════════════════
+PAPER TITLE ABBREVIATIONS
+════════════════════════════════
+The papers section is always at the TOP of the page. Match these handwritten abbreviations to the correct full title:
+
+  Mirs / Mirr / Mirrr / Mirror        → Mirror
+  Mail / Mal / Maol                    → Mail
+  Sun / Sen                            → Sun
+  Exp / Exps / Expres                  → Express
+  Star / Ster                          → Star  ← IMPORTANT: "Star" is a newspaper TITLE, the number next to it is the delivery quantity
+  Tnes / Tims / Times / Tes            → Times
+  The I / The i / Tei / Te i           → The I
+  People / Pple                        → People  (Sunday only)
+  GP / G.P. / Guern Press              → Guernsey Press
+
+════════════════════════════════
+MAGAZINE TITLE ABBREVIATIONS
+════════════════════════════════
+Magazines are listed BELOW the papers. Match these to full titles:
+
+  Bella / Bela                         → Bella
+  Best                                 → Best
+  Chat / Cht / Chdt                    → Chat
+  Closer / Closr / Clser               → Closer
+  Hello / Helo / Helo!                 → Hello!
+  Inside Soap / Insde Sop / Insid Soap → Inside Soap
+  Love It / Love It!                   → Love It!
+  MCN / Mc N / Motor Cyc               → Motor Cycle News
+  My Weekly / My Wekly / My Wkly       → My Weekly
+  P Friend / P Fulen / P Frend / PF    → Peoples Friend
+  Pick Me Up / PMU                     → Pick Me Up
+  Platinum / Plat                      → Platinum
+  R Times / R Ties / R Tmes / RT       → Radio Times
+  Real People / Real Pple              → Real People
+  TAB / TAB3 / Tab 3 / T.A.B           → Take A Break   ← NOT Arrowords
+  TAB Monthly / TAB Mthly / Tab Month  → Take A Break Monthly
+  TAB Arrow / TAB Arrow / TAB Arrwds / TAB Mini → TAB Mini Arrowords Collection
+  Thats Life / Ttds Life / Thts Life / Tlds Life → That's Life Weekly
+  Total TV / Total Tu / Tot TV / TTV   → Total TV Guide
+  TV Stream / Tu Stream / TV & Stream  → TV & Streaming Weekly
+  TV Choice / TV Chice / Tu Chae / TVC → TV Choice
+  Whats on TV / Wlcb on Tu / Whts TV   → Whats On TV Weekly
+  Woman / Wonan / Wom                  → Woman
+  W Own / Womans Own / W Owm           → Womans Own
+  W Weekly / W Wekly / W Wkly / WW     → Womans Weekly
+  Yours / Yous / Yrs                   → Yours
+
+════════════════════════════════
+READING THE NUMBERS
+════════════════════════════════
+
+PAPERS (top section):
+  Format: TITLE  [del qty]  [ret qty]
+  - First number = delivery quantity
+  - Second number (if present) = returns quantity
+  - The page heading shows the day (e.g. "Thurs 14 May" = Thursday)
+  - All quantities on that page are for that single day
+
+MAGAZINES (lower section):
+  Format: TITLE  [del qty] — [del price]  [circled ret qty]  [circled ret price]
+  - Number BEFORE the dash = delivery quantity
+  - Number AFTER the dash = delivery price this week (e.g. 1.45, 2.99, 3.50)
+  - CIRCLED number = returns quantity
+  - CIRCLED price beside it = returns credit price (last week's rate, CAN differ from del price)
+  - No circled number = zero returns
+  - Examples:
+      "Chat  3  7 — 1.45"           → del_qty=3, del_price=1.45, ret_qty=0
+      "W Weekly  7 — 2.55  (2)(1.99)" → del_qty=7, del_price=2.55, ret_qty=2, ret_price=1.99
+      "TV Choice  46 — .85"          → del_qty=46, del_price=0.85, ret_qty=0
+
+════════════════════════════════
+OUTPUT FORMAT
+════════════════════════════════
+Return ONLY valid JSON (absolutely no markdown, no explanation, no backticks):
+{
+  "date": "thu",
+  "papers": [
+    {"title":"Mirror","mon_del":null,"mon_ret":null,"tue_del":null,"tue_ret":null,"wed_del":null,"wed_ret":null,"thu_del":5,"thu_ret":3,"fri_del":null,"fri_ret":null,"sat_del":null,"sat_ret":null,"sun_del":null,"sun_ret":null}
+  ],
+  "mags": [
+    {"title":"Take A Break","del_qty":12,"del_price":1.45,"ret_qty":0,"ret_price":null},
+    {"title":"Womans Weekly","del_qty":7,"del_price":2.55,"ret_qty":2,"ret_price":1.99}
+  ]
+}
+Use null for any value you cannot read clearly. Never invent or guess a price — use null if unsure.`
+                    }
+                  ]
+                }]
+              })
+            });
+            const data = await resp.json();
+            const text = (data.content||[]).filter(x=>x.type==='text').map(x=>x.text).join('');
+            const clean = text.replace(/```json|```/g,'').trim();
+            const parsed = JSON.parse(clean);
+
+            // Fuzzy title match — strips punctuation/spaces for comparison
+            function fuzzyMatch(a, b){
+              const norm = s => s.toLowerCase().replace(/[^a-z0-9]/g,'');
+              return norm(a).includes(norm(b)) || norm(b).includes(norm(a));
+            }
+
+            // Merge papers
+            if(parsed.papers){
+              parsed.papers.forEach(sp => {
+                const wp = wk.papers.find(p => fuzzyMatch(p.title, sp.title));
+                if(!wp) return;
+                ['mon','tue','wed','thu','fri','sat','sun'].forEach(d => {
+                  if(sp[d+'_del'] != null) wp.days[d].del = String(sp[d+'_del']);
+                  if(sp[d+'_ret'] != null) wp.days[d].ret = String(sp[d+'_ret']);
+                });
+              });
+            }
+
+            // Merge magazines — del_qty/del_price/ret_qty/ret_price (circled = ret)
+            if(parsed.mags){
+              parsed.mags.forEach(sm => {
+                let wm = wk.mags.find(m => fuzzyMatch(m.title, sm.title));
+                if(!wm){
+                  // Auto-add any title the scan found that isn't in the list yet
+                  wm = {title: sm.title, delQty:'', delPrice:'', retQty:'', retPrice:''};
+                  wk.mags.push(wm);
+                }
+                if(sm.del_qty != null) wm.delQty = String(sm.del_qty);
+                if(sm.del_price != null) wm.delPrice = String(sm.del_price);
+                if(sm.ret_qty != null && sm.ret_qty > 0) wm.retQty = String(sm.ret_qty);
+                if(sm.ret_price != null) wm.retPrice = String(sm.ret_price);
+                // If returns exist but no separate ret_price, fall back to del_price
+                if(sm.ret_qty > 0 && !sm.ret_price && sm.del_price) wm.retPrice = String(sm.del_price);
+              });
+            }
+
+            save();
+            if(toastEl) toastEl.style.display='none';
+            toast('✓ Scan complete — please check returns prices (circled numbers)');
+            render();
+          } catch(err) {
+            if(toastEl) toastEl.style.display='none';
+            toast('⚠ Scan failed: ' + err.message);
+          }
+        };
+        reader.readAsDataURL(file);
+      };
+      inp.click();
+    };
+
+    return h('div',{},
+      // Header
+      h('div',{style:{display:'flex',alignItems:'center',gap:'12px',marginBottom:'20px',flexWrap:'wrap'}},
+        h('button',{className:'btn b3',onclick:()=>{st.shopEditWeek=null;render();}}, '← Back'),
+        h('div',{style:{flex:'1'}},
+          h('div',{className:'st',style:{marginBottom:0}}, `📋 Edit Week — ${wk.weekStart} to ${wk.weekEnd}`)
+        ),
+        h('button',{className:'btn b1',onclick:doScan}, '📷 Scan Invoice'),
+        h('span',{id:'scan-toast',style:{display:'none',fontSize:'13px',color:'#888'}},'🔄 Scanning…')
+      ),
+
+      // Invoice number & dates
+      h('div',{className:'card',style:{marginBottom:'16px'}},
+        h('div',{className:'g3'},
+          h('div',{},
+            h('label',{className:'fl'},'Invoice Number'),
+            h('input',{type:'number',className:'fi',value:wk.invoiceNum,oninput:e=>{wk.invoiceNum=e.target.value;save();}})
+          ),
+          h('div',{},
+            h('label',{className:'fl'},'Week Start'),
+            h('input',{type:'date',className:'fi',value:wk.weekStart,oninput:e=>{wk.weekStart=e.target.value;save();}})
+          ),
+          h('div',{},
+            h('label',{className:'fl'},'Week End'),
+            h('input',{type:'date',className:'fi',value:wk.weekEnd,oninput:e=>{wk.weekEnd=e.target.value;save();}})
+          )
+        )
+      ),
+
+      // ── DAILY / SAT / SUN PAPERS ──────────────────────────────────
+      h('div',{className:'card',style:{marginBottom:'16px',overflowX:'auto'}},
+        h('div',{className:'sd'},'📰 Daily Papers (Mon–Fri)'),
+        h('table',{style:{width:'100%',borderCollapse:'collapse',fontSize:'13px'}},
+          h('thead',{},
+            h('tr',{style:{background:'#1a1a1a',color:'#c8a84b'}},
+              h('th',{style:{padding:'7px 8px',textAlign:'left',minWidth:'110px'}},'Title'),
+              h('th',{style:{padding:'7px 8px',textAlign:'center',fontSize:'11px'}},'Price'),
+              ...['Mon','Tue','Wed','Thu','Fri'].map(d =>
+                h('th',{style:{padding:'7px 4px',textAlign:'center',fontSize:'11px'},colSpan:2}, d)
+              ),
+              h('th',{style:{padding:'7px 8px',textAlign:'right'}},'Net'),h('th',{style:{padding:'7px 8px',textAlign:'right'}},'Total')
+            ),
+            h('tr',{style:{background:'#2c2c2c',color:'#aaa',fontSize:'11px'}},
+              h('td',{},''),h('td',{},''),
+              ...['mon','tue','wed','thu','fri'].flatMap(() => [
+                h('td',{style:{textAlign:'center',padding:'3px 4px'}},'Del'),
+                h('td',{style:{textAlign:'center',padding:'3px 4px'}},'Ret')
+              ]),
+              h('td',{},''),h('td',{})
+            )
+          ),
+          h('tbody',{},
+            ...wk.papers.filter(p=>p.weekPrice>0).map((p,pi) => {
+              let net=0;
+              ['mon','tue','wed','thu','fri'].forEach(d=>{
+                net += (parseFloat(p.days[d].del)||0) - (parseFloat(p.days[d].ret)||0);
+              });
+              const rowTotal = net * p.weekPrice;
+              return h('tr',{style:{background:pi%2===0?'#fff':'#fafafa'}},
+                h('td',{style:{padding:'4px 8px',fontWeight:'bold'}},p.title),
+                h('td',{style:{padding:'4px 8px',textAlign:'center',color:'#555'}},p.weekPrice.toFixed(2)),
+                ...['mon','tue','wed','thu','fri'].flatMap(d => [
+                  h('td',{style:{padding:'2px 3px'}},
+                    h('input',{type:'number',min:'0',style:{width:'44px',padding:'4px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px',background:p.days[d].del?'#fff':'#fafafa'},value:p.days[d].del,oninput:ev=>{p.days[d].del=ev.target.value;save();render();}})
+                  ),
+                  h('td',{style:{padding:'2px 3px'}},
+                    h('input',{type:'number',min:'0',style:{width:'44px',padding:'4px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px',background:p.days[d].ret?'#fffbe6':'#fafafa'},value:p.days[d].ret,oninput:ev=>{p.days[d].ret=ev.target.value;save();render();}})
+                  )
+                ]),
+                h('td',{style:{padding:'4px 8px',textAlign:'right',color:net<0?'#b94040':'#2a5e2a',fontWeight:'bold'}},net),
+                h('td',{style:{padding:'4px 8px',textAlign:'right',fontWeight:'bold'}},rowTotal===0?'—':'£'+rowTotal.toFixed(2))
+              );
+            }),
+            h('tr',{style:{background:'#f5f0e8',fontWeight:'bold',borderTop:'2px solid #c8a84b'}},
+              h('td',{colSpan:12,style:{padding:'7px 8px'}},'Daily Total'),
+              h('td',{style:{padding:'7px 8px',textAlign:'right'}},fmt2(c.dailyTotal))
+            )
+          )
+        ),
+
+        h('div',{className:'sd',style:{marginTop:'16px'}},'📰 Saturday Papers'),
+        h('table',{style:{width:'100%',borderCollapse:'collapse',fontSize:'13px'}},
+          h('thead',{},
+            h('tr',{style:{background:'#1a1a1a',color:'#c8a84b'}},
+              h('th',{style:{padding:'7px 8px',textAlign:'left'}},'Title'),
+              h('th',{style:{padding:'7px 8px',textAlign:'center',fontSize:'11px'}},'Price'),
+              h('th',{style:{padding:'7px 8px',textAlign:'center',fontSize:'11px'}},'Del'),
+              h('th',{style:{padding:'7px 8px',textAlign:'center',fontSize:'11px'}},'Ret'),
+              h('th',{style:{padding:'7px 8px',textAlign:'right'}},'Net'),
+              h('th',{style:{padding:'7px 8px',textAlign:'right'}},'Total')
+            )
+          ),
+          h('tbody',{},
+            ...wk.papers.filter(p=>p.satPrice>0).map((p,pi) => {
+              const del = parseFloat(p.days.sat.del)||0;
+              const ret = parseFloat(p.days.sat.ret)||0;
+              const net = del - ret;
+              return h('tr',{style:{background:pi%2===0?'#fff':'#fafafa'}},
+                h('td',{style:{padding:'4px 8px',fontWeight:'bold'}},p.title),
+                h('td',{style:{padding:'4px 8px',textAlign:'center',color:'#555'}},p.satPrice.toFixed(2)),
+                h('td',{style:{padding:'2px 4px'}},h('input',{type:'number',min:'0',style:{width:'60px',padding:'5px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px',background:p.days.sat.del?'#fff':'#fafafa'},value:p.days.sat.del,oninput:ev=>{p.days.sat.del=ev.target.value;save();render();}})),
+                h('td',{style:{padding:'2px 4px'}},h('input',{type:'number',min:'0',style:{width:'60px',padding:'5px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px',background:p.days.sat.ret?'#fffbe6':'#fafafa'},value:p.days.sat.ret,oninput:ev=>{p.days.sat.ret=ev.target.value;save();render();}})),
+                h('td',{style:{padding:'4px 8px',textAlign:'right',fontWeight:'bold',color:net<0?'#b94040':'#2a5e2a'}},net),
+                h('td',{style:{padding:'4px 8px',textAlign:'right',fontWeight:'bold'}},(net*p.satPrice)===0?'—':'£'+(net*p.satPrice).toFixed(2))
+              );
+            }),
+            h('tr',{style:{background:'#f5f0e8',fontWeight:'bold',borderTop:'2px solid #c8a84b'}},
+              h('td',{colSpan:5,style:{padding:'7px 8px'}},'Saturday Total'),
+              h('td',{style:{padding:'7px 8px',textAlign:'right'}},fmt2(c.satTotal))
+            )
+          )
+        ),
+
+        h('div',{className:'sd',style:{marginTop:'16px'}},'📰 Sunday Papers'),
+        h('table',{style:{width:'100%',borderCollapse:'collapse',fontSize:'13px'}},
+          h('thead',{},
+            h('tr',{style:{background:'#1a1a1a',color:'#c8a84b'}},
+              h('th',{style:{padding:'7px 8px',textAlign:'left'}},'Title'),
+              h('th',{style:{padding:'7px 8px',textAlign:'center',fontSize:'11px'}},'Price'),
+              h('th',{style:{padding:'7px 8px',textAlign:'center',fontSize:'11px'}},'Del'),
+              h('th',{style:{padding:'7px 8px',textAlign:'center',fontSize:'11px'}},'Ret'),
+              h('th',{style:{padding:'7px 8px',textAlign:'right'}},'Net'),
+              h('th',{style:{padding:'7px 8px',textAlign:'right'}},'Total')
+            )
+          ),
+          h('tbody',{},
+            ...wk.papers.filter(p=>p.sunPrice>0).map((p,pi) => {
+              const del = parseFloat(p.days.sun.del)||0;
+              const ret = parseFloat(p.days.sun.ret)||0;
+              const net = del - ret;
+              return h('tr',{style:{background:pi%2===0?'#fff':'#fafafa'}},
+                h('td',{style:{padding:'4px 8px',fontWeight:'bold'}},p.title),
+                h('td',{style:{padding:'4px 8px',textAlign:'center',color:'#555'}},p.sunPrice.toFixed(2)),
+                h('td',{style:{padding:'2px 4px'}},h('input',{type:'number',min:'0',style:{width:'60px',padding:'5px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px',background:p.days.sun.del?'#fff':'#fafafa'},value:p.days.sun.del,oninput:ev=>{p.days.sun.del=ev.target.value;save();render();}})),
+                h('td',{style:{padding:'2px 4px'}},h('input',{type:'number',min:'0',style:{width:'60px',padding:'5px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px',background:p.days.sun.ret?'#fffbe6':'#fafafa'},value:p.days.sun.ret,oninput:ev=>{p.days.sun.ret=ev.target.value;save();render();}})),
+                h('td',{style:{padding:'4px 8px',textAlign:'right',fontWeight:'bold',color:net<0?'#b94040':'#2a5e2a'}},net),
+                h('td',{style:{padding:'4px 8px',textAlign:'right',fontWeight:'bold'}},(net*p.sunPrice)===0?'—':'£'+(net*p.sunPrice).toFixed(2))
+              );
+            }),
+            h('tr',{style:{background:'#f5f0e8',fontWeight:'bold',borderTop:'2px solid #c8a84b'}},
+              h('td',{colSpan:5,style:{padding:'7px 8px'}},'Sunday Total'),
+              h('td',{style:{padding:'7px 8px',textAlign:'right'}},fmt2(c.sunTotal))
+            )
+          )
+        )
+      ),
+
+      // ── MAGAZINES ─────────────────────────────────────────────────
+      h('div',{className:'card',style:{marginBottom:'16px'}},
+        h('div',{className:'sd'},'📚 Magazines'),
+        h('div',{style:{fontSize:'12px',color:'#888',marginBottom:'10px'}},'Enter delivery qty & price, and return qty & credit price for each title.'),
+        h('table',{style:{width:'100%',borderCollapse:'collapse',fontSize:'13px'}},
+          h('thead',{},
+            h('tr',{style:{background:'#1a1a1a',color:'#c8a84b'}},
+              h('th',{style:{padding:'7px 8px',textAlign:'left',minWidth:'150px'}},'Magazine'),
+              h('th',{style:{padding:'7px 8px',textAlign:'center'}},'Del Qty'),
+              h('th',{style:{padding:'7px 8px',textAlign:'center'}},'@ Price'),
+              h('th',{style:{padding:'7px 8px',textAlign:'right'}},'Invoiced'),
+              h('th',{style:{padding:'7px 8px',textAlign:'center'}},'Ret Qty'),
+              h('th',{style:{padding:'7px 8px',textAlign:'center'}},'@ Price'),
+              h('th',{style:{padding:'7px 8px',textAlign:'right'}},'Credited'),
+              h('th',{style:{padding:'7px 8px',textAlign:'center',fontSize:'11px'}},'✕')
+            )
+          ),
+          h('tbody',{},
+            ...wk.mags.map((m,mi) => {
+              const inv = (parseFloat(m.delQty)||0)*(parseFloat(m.delPrice)||0);
+              const cred = (parseFloat(m.retQty)||0)*(parseFloat(m.retPrice)||0);
+              return h('tr',{key:mi,style:{background:mi%2===0?'#fff':'#fafafa'}},
+                h('td',{style:{padding:'4px 8px',fontWeight:'bold'}},m.title),
+                h('td',{style:{padding:'2px 4px'}},h('input',{type:'number',min:'0',style:{width:'55px',padding:'4px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px'},value:m.delQty,oninput:ev=>{m.delQty=ev.target.value;save();render();}})),
+                h('td',{style:{padding:'2px 4px'}},h('input',{type:'number',min:'0',step:'0.01',style:{width:'60px',padding:'4px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px'},value:m.delPrice,oninput:ev=>{m.delPrice=ev.target.value;save();render();}})),
+                h('td',{style:{padding:'4px 8px',textAlign:'right',color:'#2a5e2a',fontWeight:'bold'}},inv?'£'+inv.toFixed(2):'—'),
+                h('td',{style:{padding:'2px 4px'}},h('input',{type:'number',min:'0',style:{width:'55px',padding:'4px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px',background:m.retQty?'#fffbe6':'#fafafa'},value:m.retQty,oninput:ev=>{m.retQty=ev.target.value;save();render();}})),
+                h('td',{style:{padding:'2px 4px'}},h('input',{type:'number',min:'0',step:'0.01',style:{width:'60px',padding:'4px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px',background:m.retQty?'#fffbe6':'#fafafa'},value:m.retPrice,oninput:ev=>{m.retPrice=ev.target.value;save();render();}})),
+                h('td',{style:{padding:'4px 8px',textAlign:'right',color:'#b94040',fontWeight:'bold'}},cred?'−£'+cred.toFixed(2):'—'),
+                h('td',{style:{padding:'4px 8px',textAlign:'center'}},h('button',{className:'btn',style:{background:'#f0e0e0',color:'#b94040',border:'none',padding:'3px 8px',borderRadius:'3px',fontSize:'12px',cursor:'pointer'},onclick:()=>{wk.mags.splice(mi,1);save();render();}}, '✕'))
+              );
+            }),
+            h('tr',{style:{background:'#f5f0e8',fontWeight:'bold',borderTop:'2px solid #c8a84b'}},
+              h('td',{colSpan:3,style:{padding:'7px 8px'}},'Magazines Delivered'),
+              h('td',{style:{padding:'7px 8px',textAlign:'right'}},fmt2(c.magDel)),
+              h('td',{colSpan:2,style:{padding:'7px 8px'}},'Magazines Returned'),
+              h('td',{style:{padding:'7px 8px',textAlign:'right'},colSpan:2},c.magRet?'−£'+c.magRet.toFixed(2):'—')
+            )
+          )
+        ),
+        // Add magazine row
+        h('div',{style:{marginTop:'10px',display:'flex',gap:'8px',alignItems:'center',flexWrap:'wrap'}},
+          h('select',{id:'new-mag-sel',className:'fi',style:{flex:'1',marginBottom:0}},
+            h('option',{value:''},'— Add a magazine —'),
+            ...(S.get('shopMagList',SHOP_MAGS_DEFAULT)).map(t=>h('option',{value:t},t))
+          ),
+          h('input',{id:'new-mag-custom',type:'text',className:'fi',style:{flex:'1',marginBottom:0},placeholder:'Or type custom title…'}),
+          h('button',{className:'btn b2',onclick:()=>{
+            const sel = document.getElementById('new-mag-sel')?.value;
+            const custom = document.getElementById('new-mag-custom')?.value?.trim();
+            const title = custom || sel;
+            if(!title){toast('Pick or type a magazine title');return;}
+            wk.mags.push({title,delQty:'',delPrice:'',retQty:'',retPrice:''});
+            save(); render();
+          }},'+ Add')
+        )
+      ),
+
+      // ── TOTALS & ADJUSTMENTS ──────────────────────────────────────
+      h('div',{className:'card',style:{marginBottom:'16px'}},
+        h('div',{className:'sd'},'💰 Adjustments & Summary'),
+        h('div',{className:'g3'},
+          h('div',{},
+            h('label',{className:'fl'},'Overdue (£)'),
+            h('input',{type:'number',step:'0.01',className:'fi',value:wk.overdue,oninput:e=>{wk.overdue=e.target.value;save();render();}})
+          ),
+          h('div',{},
+            h('label',{className:'fl'},'Vouchers (£)'),
+            h('input',{type:'number',step:'0.01',className:'fi',value:wk.vouchers,oninput:e=>{wk.vouchers=e.target.value;save();render();}})
+          ),
+          h('div',{},
+            h('label',{className:'fl'},'Note'),
+            h('input',{type:'text',className:'fi',value:wk.note||'',oninput:e=>{wk.note=e.target.value;save();}})
+          )
+        ),
+        h('div',{style:{background:'#1a1a1a',color:'#c8a84b',padding:'16px',borderRadius:'4px',marginTop:'8px'}},
+          h('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:'6px',fontSize:'13px'}},
+            h('span',{},'Total Newspapers'),h('span',{},'£'+c.totalPapers.toFixed(2))
+          ),
+          h('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:'6px',fontSize:'13px'}},
+            h('span',{},'Total Magazines (net)'),h('span',{},'£'+c.totalMags.toFixed(2))
+          ),
+          h('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:'6px',fontSize:'13px',color:'#aaa'}},
+            h('span',{},'Less Discount Newspapers ('+st.shopDiscountPaper+'%)'),h('span',{},'−£'+c.discPaper.toFixed(2))
+          ),
+          h('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:'10px',fontSize:'13px',color:'#aaa'}},
+            h('span',{},'Less Discount Magazines ('+st.shopDiscountMag+'%)'),h('span',{},'−£'+c.discMag.toFixed(2))
+          ),
+          h('div',{style:{display:'flex',justifyContent:'space-between',fontSize:'20px',fontWeight:'bold',borderTop:'1px solid #c8a84b',paddingTop:'10px'}},
+            h('span',{},'TOTAL DUE'),h('span',{},'£'+c.totalDue.toFixed(2))
+          )
+        )
+      ),
+
+      // ── ACTIONS ───────────────────────────────────────────────────
+      h('div',{style:{display:'flex',gap:'10px',flexWrap:'wrap',marginBottom:'40px'}},
+        h('button',{className:'btn b5',onclick:()=>{
+          const html = shopInvoiceHTML(wk, biz);
+          const win = window.open('','_blank','width=750,height=900');
+          win.document.write(html); win.document.close();
+          setTimeout(()=>win.print(), 500);
+        }},'🖨 Print Invoice'),
+        h('button',{className:'btn b4',onclick:()=>{
+          const html = shopInvoiceHTML(wk, biz);
+          const blob = new Blob([html],{type:'text/html'});
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href=url; a.download='Invoice_'+wk.invoiceNum+'_'+wk.weekEnd+'.html'; a.click();
+          URL.revokeObjectURL(url);
+          toast('✓ Invoice downloaded');
+        }},'⬇ Download HTML'),
+        h('button',{className:'btn b1',onclick:()=>{
+          const html = shopInvoiceHTML(wk, biz);
+          const subject = encodeURIComponent('Invoice '+wk.invoiceNum+' — Week Ending '+wk.weekEnd);
+          const body = encodeURIComponent(
+            'Dear Zac,\n\nPlease find enclosed Invoice '+wk.invoiceNum+' for the week ending '+wk.weekEnd+'.\n\n'+
+            '  Total Newspapers:  £'+c.totalPapers.toFixed(2)+'\n'+
+            '  Total Magazines:   £'+c.totalMags.toFixed(2)+'\n'+
+            '  Less Discount:     −£'+c.totalDiscount.toFixed(2)+'\n'+
+            '  ─────────────────────────\n'+
+            '  TOTAL DUE:         £'+c.totalDue.toFixed(2)+'\n\n'+
+            'Kind regards,\nCraig Torode\n'+
+            (biz.address||'Sablonierre, Grandes Rocques, Castel, Guernsey. GY5 7FR')+'\n'+
+            (biz.phone||'')+'\nCraigpapers@icloud.com'
+          );
+          const toEmail = st.shopEmail || 'Zac@alliance.gg';
+          window.location.href = 'mailto:'+toEmail+'?subject='+subject+'&body='+body;
+          setTimeout(()=>alert('📧 Remember to send from:\nCraigpapers@icloud.com\n\nTap the "From" field in Mail if needed.'), 300);
+        }},'✉ Email Invoice'),
+        h('button',{className:'btn b3',onclick:()=>{st.shopEditWeek=null;render();}},'✓ Done')
+      )
+    );
+  }
+
+  // ── LIST VIEW ─────────────────────────────────────────────────────
+  return h('div',{},
+    h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'20px',flexWrap:'wrap',gap:'10px'}},
+      h('div',{className:'st',style:{marginBottom:0}},'🏪 Shop Weekly Bills — Alliance Ltd'),
+      h('button',{className:'btn b5',onclick:()=>{
+        const wk = newBlankWeek();
+        st.shopWeeks.unshift(wk);
+        S.set('shopWeeks', st.shopWeeks);
+        st.shopEditWeek = wk.id;
+        render();
+      }},'+ New Week')
+    ),
+
+    // Settings strip
+    h('div',{className:'card',style:{marginBottom:'16px'}},
+      h('div',{className:'sd'},'⚙ Shop Settings'),
+      h('div',{className:'g3'},
+        h('div',{},
+          h('label',{className:'fl'},'Newspaper Discount %'),
+          h('input',{type:'number',step:'0.1',min:'0',max:'100',className:'fi',value:st.shopDiscountPaper,oninput:e=>{st.shopDiscountPaper=parseFloat(e.target.value)||0;S.set('shopDiscountPaper',st.shopDiscountPaper);render();}})
+        ),
+        h('div',{},
+          h('label',{className:'fl'},'Magazine Discount %'),
+          h('input',{type:'number',step:'0.1',min:'0',max:'100',className:'fi',value:st.shopDiscountMag,oninput:e=>{st.shopDiscountMag=parseFloat(e.target.value)||0;S.set('shopDiscountMag',st.shopDiscountMag);render();}})
+        ),
+        h('div',{},
+          h('label',{className:'fl'},'Invoice To (shop email)'),
+          h('input',{type:'email',className:'fi',value:st.shopEmail,placeholder:'Zac@alliance.gg',oninput:e=>{st.shopEmail=e.target.value;S.set('shopEmail',st.shopEmail);}})
+        ),
+        h('div',{},
+          h('label',{className:'fl'},'Send From (your email)'),
+          h('div',{style:{padding:'9px 12px',border:'1px solid #c8a84b',borderRadius:'3px',fontSize:'13px',background:'#fffbe6',marginBottom:'10px',color:'#555'}},
+            '📧 Craigpapers@icloud.com',
+            h('div',{style:{fontSize:'11px',color:'#888',marginTop:'3px'}},'Make sure this is set as your account in Apple Mail')
+          )
+        )
+      )
+    ),
+
+    // Week list
+    wks.length === 0
+      ? h('div',{className:'a1',style:{textAlign:'center',padding:'30px'}},
+          h('div',{style:{fontSize:'32px',marginBottom:'8px'}},'🏪'),
+          h('div',{style:{fontWeight:'bold',marginBottom:'4px'}},'No weekly bills yet'),
+          h('div',{style:{fontSize:'13px'}},'Click "+ New Week" to create your first shop invoice.')
+        )
+      : h('div',{},
+          wks.map((wk,wi) => {
+            const c = shopCalcWeek(wk);
+            return h('div',{key:wk.id,className:'card',style:{marginBottom:'12px',display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:'10px'}},
+              h('div',{},
+                h('div',{style:{fontWeight:'bold',fontSize:'15px'}},'Week ending '+wk.weekEnd),
+                h('div',{style:{fontSize:'12px',color:'#888',marginTop:'2px'}},'Invoice #'+wk.invoiceNum+' · '+wk.weekStart+' to '+wk.weekEnd)
+              ),
+              h('div',{style:{display:'flex',gap:'16px',alignItems:'center',flexWrap:'wrap'}},
+                h('div',{style:{textAlign:'center'}},
+                  h('div',{style:{fontSize:'11px',color:'#888',textTransform:'uppercase',letterSpacing:'.5px'}},'Papers'),
+                  h('div',{style:{fontSize:'16px',fontWeight:'bold',color:'#2a5e2a'}},'£'+c.totalPapers.toFixed(2))
+                ),
+                h('div',{style:{textAlign:'center'}},
+                  h('div',{style:{fontSize:'11px',color:'#888',textTransform:'uppercase',letterSpacing:'.5px'}},'Mags'),
+                  h('div',{style:{fontSize:'16px',fontWeight:'bold',color:'#5a7ec8'}},'£'+c.totalMags.toFixed(2))
+                ),
+                h('div',{style:{textAlign:'center'}},
+                  h('div',{style:{fontSize:'11px',color:'#888',textTransform:'uppercase',letterSpacing:'.5px'}},'Total Due'),
+                  h('div',{style:{fontSize:'20px',fontWeight:'bold',color:'#c8a84b'}},'£'+c.totalDue.toFixed(2))
+                )
+              ),
+              h('div',{style:{display:'flex',gap:'8px'}},
+                h('button',{className:'btn b2',onclick:()=>{st.shopEditWeek=wk.id;render();}}, '✏ Edit'),
+                h('button',{className:'btn b4',onclick:()=>{
+                  const html = shopInvoiceHTML(wk, biz);
+                  const win = window.open('','_blank','width=750,height=900');
+                  win.document.write(html); win.document.close();
+                  setTimeout(()=>win.print(),500);
+                }}, '🖨 Print'),
+                h('button',{className:'btn b3',style:{color:'#b94040'},onclick:()=>{
+                  if(confirm('Delete this week\'s bill?')){st.shopWeeks.splice(wi,1);S.set('shopWeeks',st.shopWeeks);render();}
+                }}, '🗑')
+              )
+            );
+          })
+        )
+  );
+}
+
 // ── MAIN RENDER ───────────────────────────────────────────────────
 function render(){
   const app=document.getElementById('app');app.innerHTML='';
-  const tabs=isDriver()?[{k:'customers',i:'👥',l:'Customers'},{k:'rounds',i:'🚲',l:'Rounds'},{k:'billing',i:'£',l:'Billing'}]:[{k:'dashboard',i:'⊞',l:'Dashboard'},{k:'customers',i:'👥',l:'Customers'},{k:'rounds',i:'🚲',l:'Rounds'},{k:'billing',i:'£',l:'Billing'},{k:'stock',i:'📦',l:'Stock'},{k:'calendar',i:'📅',l:'Calendar'}];
+  const tabs=isDriver()?[{k:'customers',i:'👥',l:'Customers'},{k:'rounds',i:'🚲',l:'Rounds'},{k:'billing',i:'£',l:'Billing'}]:[{k:'dashboard',i:'⊞',l:'Dashboard'},{k:'customers',i:'👥',l:'Customers'},{k:'rounds',i:'🚲',l:'Rounds'},{k:'billing',i:'£',l:'Billing'},{k:'stock',i:'📦',l:'Stock'},{k:'calendar',i:'📅',l:'Calendar'},{k:'shop',i:'🏪',l:'Shop'}];
   app.appendChild(h('header',{className:'hdr'},h('div',{className:'hdr-in'},
     h('div',{style:{display:'flex',alignItems:'center',gap:'12px'}},h('span',{style:{fontSize:'28px'}},'🗞'),h('div',{},h('div',{className:'logo-n'},'C J TORODE'),h('div',{className:'logo-s'},'Newsagent'))),
     h('div',{style:{display:'flex',alignItems:'center',gap:'14px'}},
@@ -2036,7 +2761,7 @@ function render(){
     ...tabs.map(t=>h('button',{className:'nb'+(st.tab===t.k?' on':''),onclick:()=>{st.tab=t.k;render();}},t.i+' '+t.l)),
     st.gstEnabled?h('div',{style:{marginLeft:'auto',padding:'0 16px',fontSize:'12px',color:'#c8a84b',letterSpacing:'1px'}},'✓ GST '+st.gstRate+'%'):null
   )));
-  var tabFn={dashboard:rDash,customers:rCustomers,rounds:rRounds,billing:rBilling,stock:rStock,calendar:rCal}[st.tab];
+  var tabFn={dashboard:rDash,customers:rCustomers,rounds:rRounds,billing:rBilling,stock:rStock,calendar:rCal,shop:rShop}[st.tab];
   const content=tabFn?tabFn():h('div',{});
   app.appendChild(h('main',{className:'main'},content||h('div',{})));
   app.appendChild(h('div',{style:{height:'40px'}}));

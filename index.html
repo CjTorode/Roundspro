@@ -218,7 +218,8 @@ const S={get:(k,fb)=>{try{const v=localStorage.getItem('cjt_'+k);return v?JSON.p
 // ── SUPABASE DATA LAYER ───────────────────────────────────────────
 const DB = {
   SETTINGS_KEYS: ['gstRate','gstEnabled','gstNumber','defaultDelivery','showCostPrice',
-    'calEvents','billingStart','billingPeriod','billingStart2','billingPeriod2','bizDetails','lastWedCharge','billStyle'],
+    'calEvents','billingStart','billingPeriod','billingStart2','billingPeriod2','bizDetails','lastWedCharge','billStyle',
+    'shopDiscountPaper','shopDiscountMag','shopEmail'],
 
   async saveCustomers(){
     if(!getSB()) return;
@@ -313,15 +314,42 @@ const DB = {
     DB.SETTINGS_KEYS.forEach(k => S.set(k, st[k]));
   },
 
+  async saveShopWeeks(){
+    S.set('shopWeeks', st.shopWeeks); // always keep local cache
+    if(!getSB()) return;
+    try {
+      const rows = st.shopWeeks.map(w => ({
+        id: w.id,
+        user_id: USER_ID,
+        week_start: w.weekStart || null,
+        week_end: w.weekEnd || null,
+        invoice_num: String(w.invoiceNum || ''),
+        papers: w.papers || [],
+        mags: w.mags || [],
+        overdue: parseFloat(w.overdue) || 0,
+        vouchers: parseFloat(w.vouchers) || 0,
+        note: w.note || '',
+      }));
+      await sbUpsert('shop_weeks', rows);
+    } catch(e){ console.warn('saveShopWeeks:', e.message); }
+  },
+
+  async deleteShopWeek(id){
+    S.set('shopWeeks', st.shopWeeks);
+    if(!getSB()) return;
+    try { await sbDelete('shop_weeks', id); } catch(e){ console.warn('deleteShopWeek:', e.message); }
+  },
+
   async load(){
     if(!getSB()) return;
     try {
-      const [custs, stocks, rounds, pays, settings] = await Promise.all([
+      const [custs, stocks, rounds, pays, settings, shopWks] = await Promise.all([
         sbSelect('customers'),
         sbSelect('stock'),
         sbSelect('rounds'),
         sbSelect('payments'),
-        sbSelect('settings')
+        sbSelect('settings'),
+        sbSelect('shop_weeks'),
       ]);
       if(custs && custs.length){
         const localCusts = S.get('customers', []);
@@ -376,6 +404,23 @@ const DB = {
         // Re-apply hardcoded list order after sync
         applyListOrder();
         S.set('customers', st.customers);
+      }
+      // Load shop weeks from Supabase
+      if(shopWks && shopWks.length){
+        st.shopWeeks = shopWks.map(r => ({
+          id: r.id,
+          weekStart: r.week_start || '',
+          weekEnd: r.week_end || '',
+          invoiceNum: r.invoice_num || '',
+          papers: r.papers || [],
+          mags: r.mags || [],
+          overdue: r.overdue || 0,
+          vouchers: r.vouchers || 0,
+          note: r.note || '',
+        }));
+        // Sort newest first
+        st.shopWeeks.sort((a,b) => (b.weekEnd||'').localeCompare(a.weekEnd||''));
+        S.set('shopWeeks', st.shopWeeks);
       }
       render();
       if(!DB._silent) toast('☁ Synced from Supabase');
@@ -2199,7 +2244,7 @@ function rShop(){
   if(st.shopEditWeek !== null){
     const wk = st.shopWeeks.find(w => w.id === st.shopEditWeek);
     if(!wk){ st.shopEditWeek = null; render(); return h('div',{}); }
-    const save = () => { S.set('shopWeeks', st.shopWeeks); };
+    const save = () => { DB.saveShopWeeks(); };
     const days = ['mon','tue','wed','thu','fri','sat','sun'];
     const dayLabels = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
     const c = shopCalcWeek(wk);
@@ -2662,7 +2707,7 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
       h('button',{className:'btn b5',onclick:()=>{
         const wk = newBlankWeek();
         st.shopWeeks.unshift(wk);
-        S.set('shopWeeks', st.shopWeeks);
+        DB.saveShopWeeks();
         st.shopEditWeek = wk.id;
         render();
       }},'+ New Week')
@@ -2674,15 +2719,15 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
       h('div',{className:'g3'},
         h('div',{},
           h('label',{className:'fl'},'Newspaper Discount %'),
-          h('input',{type:'number',step:'0.1',min:'0',max:'100',className:'fi',value:st.shopDiscountPaper,oninput:e=>{st.shopDiscountPaper=parseFloat(e.target.value)||0;S.set('shopDiscountPaper',st.shopDiscountPaper);render();}})
+          h('input',{type:'number',step:'0.1',min:'0',max:'100',className:'fi',value:st.shopDiscountPaper,oninput:e=>{st.shopDiscountPaper=parseFloat(e.target.value)||0;S.set('shopDiscountPaper',st.shopDiscountPaper);clearTimeout(ps._t);ps._t=setTimeout(()=>DB.saveSettings(),800);render();}})
         ),
         h('div',{},
           h('label',{className:'fl'},'Magazine Discount %'),
-          h('input',{type:'number',step:'0.1',min:'0',max:'100',className:'fi',value:st.shopDiscountMag,oninput:e=>{st.shopDiscountMag=parseFloat(e.target.value)||0;S.set('shopDiscountMag',st.shopDiscountMag);render();}})
+          h('input',{type:'number',step:'0.1',min:'0',max:'100',className:'fi',value:st.shopDiscountMag,oninput:e=>{st.shopDiscountMag=parseFloat(e.target.value)||0;S.set('shopDiscountMag',st.shopDiscountMag);clearTimeout(ps._t);ps._t=setTimeout(()=>DB.saveSettings(),800);render();}})
         ),
         h('div',{},
           h('label',{className:'fl'},'Invoice To (shop email)'),
-          h('input',{type:'email',className:'fi',value:st.shopEmail,placeholder:'Zac@alliance.gg',oninput:e=>{st.shopEmail=e.target.value;S.set('shopEmail',st.shopEmail);}})
+          h('input',{type:'email',className:'fi',value:st.shopEmail,placeholder:'Zac@alliance.gg',oninput:e=>{st.shopEmail=e.target.value;S.set('shopEmail',st.shopEmail);clearTimeout(ps._t);ps._t=setTimeout(()=>DB.saveSettings(),800);}})
         ),
         h('div',{},
           h('label',{className:'fl'},'Send From (your email)'),
@@ -2732,7 +2777,7 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
                   setTimeout(()=>win.print(),500);
                 }}, '🖨 Print'),
                 h('button',{className:'btn b3',style:{color:'#b94040'},onclick:()=>{
-                  if(confirm('Delete this week\'s bill?')){st.shopWeeks.splice(wi,1);S.set('shopWeeks',st.shopWeeks);render();}
+                  if(confirm('Delete this week\'s bill?')){const id=wk.id;st.shopWeeks.splice(wi,1);DB.deleteShopWeek(id);render();}
                 }}, '🗑')
               )
             );

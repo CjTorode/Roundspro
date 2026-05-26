@@ -2096,6 +2096,11 @@ function rModals(){
       h('label',{style:{display:'flex',alignItems:'center',gap:'8px',marginBottom:'12px',fontSize:'13px'}},h('input',{type:'checkbox',checked:st.showCostPrice,onchange:e=>{st.showCostPrice=e.target.checked;ps('showCostPrice');render();}}),'Show cost price & margin in Stock tab'),
       h('div',{className:'sd'},'🚚 Delivery'),
       lbl('Default Daily Delivery Charge (£)'),h('input',{type:'number',step:'.01',min:'0',className:'fi',value:st.defaultDelivery,oninput:e=>{st.defaultDelivery=e.target.value===''?0:parseFloat(e.target.value);ps('defaultDelivery');}}),
+      h('div',{className:'sd'},'📷 Scan Invoice (AI)'),
+      h('div',{style:{fontSize:'13px',color:'#555',marginBottom:'8px'}},'Anthropic API key is needed for the "Scan Invoice" button in the Shop tab. Get yours at console.anthropic.com.'),
+      lbl('Anthropic API Key'),
+      h('input',{type:'password',className:'fi',value:localStorage.getItem('cjt_anthropicKey')||'',placeholder:'sk-ant-…',oninput:e=>{const v=e.target.value.trim();if(v)localStorage.setItem('cjt_anthropicKey',v);else localStorage.removeItem('cjt_anthropicKey');}}),
+      h('div',{style:{fontSize:'11px',color:'#888',marginBottom:'12px'}},'Stored only in this browser — never sent anywhere except Anthropic.'),
       h('div',{className:'sd'},'🧾 Invoice Style'),
       h('div',{style:{fontSize:'13px',color:'#555',marginBottom:'10px'}},'Choose how customer bills are presented when printing or emailing.'),
       h('div',{style:{display:'flex',gap:'10px',marginBottom:'4px'}},
@@ -2337,9 +2342,11 @@ function rShop(){
         reader.onload = async ev => {
           const b64 = ev.target.result.split(',')[1];
           try {
+            const apiKey = localStorage.getItem('cjt_anthropicKey') || '';
+            if(!apiKey){ throw new Error('No API key set — add your Anthropic key in Settings'); }
             const resp = await fetch('https://api.anthropic.com/v1/messages', {
               method:'POST',
-              headers:{'Content-Type':'application/json'},
+              headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
               body: JSON.stringify({
                 model:'claude-sonnet-4-20250514',
                 max_tokens:2000,

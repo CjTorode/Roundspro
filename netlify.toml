@@ -13,8 +13,8 @@
 
 [build.environment]
   NODE_VERSION = "20"
-
-# ── Redirects ────────────────────────────────────────────────
+[functions]
+  timeout = 26# ── Redirects ────────────────────────────────────────────────
 # Single-page app fallback (important once you add routing)
 [[redirects]]
   from   = "/*"

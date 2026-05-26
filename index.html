@@ -2340,7 +2340,25 @@ function rShop(){
         if(toastEl) toastEl.style.display='block';
         const reader = new FileReader();
         reader.onload = async ev => {
-          const b64 = ev.target.result.split(',')[1];
+          // Compress image before sending to stay under Netlify 6MB limit
+          const compressImage = (dataUrl) => new Promise(resolve => {
+            const img = new Image();
+            img.onload = () => {
+              const canvas = document.createElement('canvas');
+              const maxW = 1600, maxH = 1600;
+              let w = img.width, h = img.height;
+              if(w > maxW || h > maxH){
+                const ratio = Math.min(maxW/w, maxH/h);
+                w = Math.round(w*ratio); h = Math.round(h*ratio);
+              }
+              canvas.width = w; canvas.height = h;
+              canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+              resolve(canvas.toDataURL('image/jpeg', 0.82));
+            };
+            img.src = dataUrl;
+          });
+          const compressed = await compressImage(ev.target.result);
+          const b64 = compressed.split(',')[1];
           try {
             const resp = await fetch('/.netlify/functions/scan', {
               method:'POST',
@@ -2351,7 +2369,7 @@ function rShop(){
                 messages:[{
                   role:'user',
                   content:[
-                    {type:'image',source:{type:'base64',media_type:file.type||'image/jpeg',data:b64}},
+                    {type:'image',source:{type:'base64',media_type:'image/jpeg',data:b64}},
                     {type:'text',text:`This is a handwritten newsagent weekly supply/delivery sheet written by Craig Torode, Guernsey. Read it carefully using ALL of the following rules.
 
 ════════════════════════════════

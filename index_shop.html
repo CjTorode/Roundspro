@@ -2227,17 +2227,93 @@ function rShop(){
                   role:'user',
                   content:[
                     {type:'image',source:{type:'base64',media_type:file.type||'image/jpeg',data:b64}},
-                    {type:'text',text:`This is a newsagent weekly supply sheet. Extract ALL numbers you can read.
-Return ONLY valid JSON (no markdown), with this exact structure:
+                    {type:'text',text:`This is a handwritten newsagent weekly supply/delivery sheet written by Craig Torode, Guernsey. Read it carefully using ALL of the following rules.
+
+════════════════════════════════
+PAPER TITLE ABBREVIATIONS
+════════════════════════════════
+The papers section is always at the TOP of the page. Match these handwritten abbreviations to the correct full title:
+
+  Mirs / Mirr / Mirrr / Mirror        → Mirror
+  Mail / Mal / Maol                    → Mail
+  Sun / Sen                            → Sun
+  Exp / Exps / Expres                  → Express
+  Star / Ster                          → Star  ← IMPORTANT: "Star" is a newspaper TITLE, the number next to it is the delivery quantity
+  Tnes / Tims / Times / Tes            → Times
+  The I / The i / Tei / Te i           → The I
+  People / Pple                        → People  (Sunday only)
+  GP / G.P. / Guern Press              → Guernsey Press
+
+════════════════════════════════
+MAGAZINE TITLE ABBREVIATIONS
+════════════════════════════════
+Magazines are listed BELOW the papers. Match these to full titles:
+
+  Bella / Bela                         → Bella
+  Best                                 → Best
+  Chat / Cht / Chdt                    → Chat
+  Closer / Closr / Clser               → Closer
+  Hello / Helo / Helo!                 → Hello!
+  Inside Soap / Insde Sop / Insid Soap → Inside Soap
+  Love It / Love It!                   → Love It!
+  MCN / Mc N / Motor Cyc               → Motor Cycle News
+  My Weekly / My Wekly / My Wkly       → My Weekly
+  P Friend / P Fulen / P Frend / PF    → Peoples Friend
+  Pick Me Up / PMU                     → Pick Me Up
+  Platinum / Plat                      → Platinum
+  R Times / R Ties / R Tmes / RT       → Radio Times
+  Real People / Real Pple              → Real People
+  TAB / TAB3 / Tab 3 / T.A.B           → Take A Break   ← NOT Arrowords
+  TAB Monthly / TAB Mthly / Tab Month  → Take A Break Monthly
+  TAB Arrow / TAB Arrow / TAB Arrwds / TAB Mini → TAB Mini Arrowords Collection
+  Thats Life / Ttds Life / Thts Life / Tlds Life → That's Life Weekly
+  Total TV / Total Tu / Tot TV / TTV   → Total TV Guide
+  TV Stream / Tu Stream / TV & Stream  → TV & Streaming Weekly
+  TV Choice / TV Chice / Tu Chae / TVC → TV Choice
+  Whats on TV / Wlcb on Tu / Whts TV   → Whats On TV Weekly
+  Woman / Wonan / Wom                  → Woman
+  W Own / Womans Own / W Owm           → Womans Own
+  W Weekly / W Wekly / W Wkly / WW     → Womans Weekly
+  Yours / Yous / Yrs                   → Yours
+
+════════════════════════════════
+READING THE NUMBERS
+════════════════════════════════
+
+PAPERS (top section):
+  Format: TITLE  [del qty]  [ret qty]
+  - First number = delivery quantity
+  - Second number (if present) = returns quantity
+  - The page heading shows the day (e.g. "Thurs 14 May" = Thursday)
+  - All quantities on that page are for that single day
+
+MAGAZINES (lower section):
+  Format: TITLE  [del qty] — [del price]  [circled ret qty]  [circled ret price]
+  - Number BEFORE the dash = delivery quantity
+  - Number AFTER the dash = delivery price this week (e.g. 1.45, 2.99, 3.50)
+  - CIRCLED number = returns quantity
+  - CIRCLED price beside it = returns credit price (last week's rate, CAN differ from del price)
+  - No circled number = zero returns
+  - Examples:
+      "Chat  3  7 — 1.45"           → del_qty=3, del_price=1.45, ret_qty=0
+      "W Weekly  7 — 2.55  (2)(1.99)" → del_qty=7, del_price=2.55, ret_qty=2, ret_price=1.99
+      "TV Choice  46 — .85"          → del_qty=46, del_price=0.85, ret_qty=0
+
+════════════════════════════════
+OUTPUT FORMAT
+════════════════════════════════
+Return ONLY valid JSON (absolutely no markdown, no explanation, no backticks):
 {
+  "date": "thu",
   "papers": [
-    {"title":"Mirror","mon_del":6,"mon_ret":4,"tue_del":7,"tue_ret":6,"wed_del":6,"wed_ret":4,"thu_del":5,"thu_ret":4,"fri_del":8,"fri_ret":7,"sat_del":9,"sat_ret":1,"sun_del":8,"sun_ret":3}
+    {"title":"Mirror","mon_del":null,"mon_ret":null,"tue_del":null,"tue_ret":null,"wed_del":null,"wed_ret":null,"thu_del":5,"thu_ret":3,"fri_del":null,"fri_ret":null,"sat_del":null,"sat_ret":null,"sun_del":null,"sun_ret":null}
   ],
   "mags": [
-    {"title":"TV Choice","del":36,"ret":20,"price":0.85}
+    {"title":"Take A Break","del_qty":12,"del_price":1.45,"ret_qty":0,"ret_price":null},
+    {"title":"Womans Weekly","del_qty":7,"del_price":2.55,"ret_qty":2,"ret_price":1.99}
   ]
 }
-Use null for any value you cannot read clearly. Match paper titles to: Mirror, Mail, Sun, Express, Star, Times, The I, People, Guernsey Press.`
+Use null for any value you cannot read clearly. Never invent or guess a price — use null if unsure.`
                     }
                   ]
                 }]
@@ -2247,10 +2323,17 @@ Use null for any value you cannot read clearly. Match paper titles to: Mirror, M
             const text = (data.content||[]).filter(x=>x.type==='text').map(x=>x.text).join('');
             const clean = text.replace(/```json|```/g,'').trim();
             const parsed = JSON.parse(clean);
-            // Merge scanned data into wk
+
+            // Fuzzy title match — strips punctuation/spaces for comparison
+            function fuzzyMatch(a, b){
+              const norm = s => s.toLowerCase().replace(/[^a-z0-9]/g,'');
+              return norm(a).includes(norm(b)) || norm(b).includes(norm(a));
+            }
+
+            // Merge papers
             if(parsed.papers){
               parsed.papers.forEach(sp => {
-                const wp = wk.papers.find(p => p.title.toLowerCase() === sp.title.toLowerCase());
+                const wp = wk.papers.find(p => fuzzyMatch(p.title, sp.title));
                 if(!wp) return;
                 ['mon','tue','wed','thu','fri','sat','sun'].forEach(d => {
                   if(sp[d+'_del'] != null) wp.days[d].del = String(sp[d+'_del']);
@@ -2258,18 +2341,28 @@ Use null for any value you cannot read clearly. Match paper titles to: Mirror, M
                 });
               });
             }
+
+            // Merge magazines — del_qty/del_price/ret_qty/ret_price (circled = ret)
             if(parsed.mags){
               parsed.mags.forEach(sm => {
-                const wm = wk.mags.find(m => m.title.toLowerCase().includes(sm.title.toLowerCase()) || sm.title.toLowerCase().includes(m.title.toLowerCase()));
-                if(!wm) return;
-                if(sm.del != null) wm.delQty = String(sm.del);
-                if(sm.ret != null) wm.retQty = String(sm.ret);
-                if(sm.price != null && !wm.delPrice) wm.delPrice = String(sm.price);
+                let wm = wk.mags.find(m => fuzzyMatch(m.title, sm.title));
+                if(!wm){
+                  // Auto-add any title the scan found that isn't in the list yet
+                  wm = {title: sm.title, delQty:'', delPrice:'', retQty:'', retPrice:''};
+                  wk.mags.push(wm);
+                }
+                if(sm.del_qty != null) wm.delQty = String(sm.del_qty);
+                if(sm.del_price != null) wm.delPrice = String(sm.del_price);
+                if(sm.ret_qty != null && sm.ret_qty > 0) wm.retQty = String(sm.ret_qty);
+                if(sm.ret_price != null) wm.retPrice = String(sm.ret_price);
+                // If returns exist but no separate ret_price, fall back to del_price
+                if(sm.ret_qty > 0 && !sm.ret_price && sm.del_price) wm.retPrice = String(sm.del_price);
               });
             }
+
             save();
             if(toastEl) toastEl.style.display='none';
-            toast('✓ Scan complete — please review and correct any errors');
+            toast('✓ Scan complete — please check returns prices (circled numbers)');
             render();
           } catch(err) {
             if(toastEl) toastEl.style.display='none';

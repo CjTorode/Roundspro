@@ -2134,8 +2134,31 @@ function rModals(){
       h('label',{style:{display:'flex',alignItems:'center',gap:'8px',marginBottom:'14px',fontSize:'13px'}},
         h('input',{type:'checkbox',checked:ec.gstExempt||false,onchange:e=>st.showEditCustomer.gstExempt=e.target.checked}),'GST Exempt'
       ),
+      h('div',{style:{marginBottom:'10px'}},
+        btn('b3 bf','🗑 Reset Paper History (use current papers list)',()=>{
+          if(confirm('This will clear the paper change history and use only the current ticked papers for billing. Continue?')){
+            const today = tod();
+            // Write a fresh log: remove all, then add current papers as of today
+            const freshLog = (ec.papers||[]).map(p=>({title:p,action:'add',date:today}));
+            st.showEditCustomer = {...ec, paperLog: freshLog};
+            render();
+            toast('Paper history reset — save to confirm');
+          }
+        })
+      ),
       btn('b1 bf','Save Changes',()=>{
-        st.customers=st.customers.map(cu=>cu.id===ec.id?{...ec}:cu);
+        // Update paperLog to reflect any paper changes made in edit
+        const original = st.customers.find(cu=>cu.id===ec.id);
+        const oldPapers = original ? (original.papers||[]) : [];
+        const newPapers = ec.papers||[];
+        const today = tod();
+        let log = [...(ec.paperLog||[])];
+        // Papers removed — add a "remove" log entry today
+        oldPapers.forEach(p=>{ if(!newPapers.includes(p)) log.push({title:p,action:'remove',date:today}); });
+        // Papers added — add an "add" log entry today
+        newPapers.forEach(p=>{ if(!oldPapers.includes(p)) log.push({title:p,action:'add',date:today}); });
+        const updated = {...ec, paperLog:log};
+        st.customers=st.customers.map(cu=>cu.id===ec.id?updated:cu);
         ps('customers');st.showEditCustomer=null;render();toast('✓ '+ec.name+' updated');
       })
     ),()=>{st.showEditCustomer=null;render();}));

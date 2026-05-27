@@ -515,6 +515,8 @@ const IC=[
   {id:3,name:'Susan Clark',address:'27 Maple Road',phone:'07934 567890',papers:['The Sun'],balance:-2.20,deliveryCharge:.5,gstExempt:true,roundId:2,roundOrder:1,deliveryNote:'',holidays:[]},
 ];
 const IST=[
+  // Guernsey local paper — Mon-Sat
+  {id:0, title:'Guernsey Press',        type:'paper',freq:'daily',deliveryDays:[1,2,3,4,5,6],costPrice:0,sellPrice:1.40,stock:0,gstApplicable:false},
   // Mon-Fri papers
   {id:1, title:'The Sun',               type:'paper',freq:'daily',deliveryDays:[1,2,3,4,5],costPrice:0,sellPrice:1.70,stock:0,gstApplicable:false},
   {id:2, title:'Daily Mirror',          type:'paper',freq:'daily',deliveryDays:[1,2,3,4,5],costPrice:0,sellPrice:2.10,stock:0,gstApplicable:false},
@@ -847,57 +849,58 @@ function closeCycle(){
   st.showCloseCycle=false;pa();render();toast('✓ Cycle closed — next period started');
 }
 
-function doPrint(html){
-  const ifr=document.createElement('iframe');
-  ifr.style.cssText='position:fixed;top:-9999px;left:-9999px;width:148mm;height:210mm;border:none';
-  document.body.appendChild(ifr);
-  const doc=ifr.contentWindow.document;doc.open();doc.write(html);doc.close();
-  setTimeout(()=>{try{ifr.contentWindow.focus();ifr.contentWindow.print();}catch(e){}setTimeout(()=>{try{document.body.removeChild(ifr);}catch(e){}},2000);},600);
+function printAllBills(custList){
+  const pages = custList.map(c => buildInvoiceHTML(c));
+  if(!pages.length) return;
+  const css = getInvoiceCSS();
+  // Add page-break class to all but the last invoice
+  const joined = pages.map((p,i)=> i < pages.length-1 ? p.replace('<div class="page">', '<div class="page pb">') : p).join('');
+  const html = '<!DOCTYPE html><html><head><meta charset="utf-8"><style>'+css+'</style></head><body>'+joined+'</body></html>';
+  doPrint(html);
 }
 
-
-function buildWeeklyRows(c,start){
-  const rows=[];
-  for(let w=0;w<4;w++){
-    const wStart=new Date(start);wStart.setDate(wStart.getDate()+(w*7));
-    const wEnd=new Date(wStart);wEnd.setDate(wEnd.getDate()+6);
-    const wBill=calcBill(c,wStart.toISOString().split('T')[0],7);
-    rows.push({label:'Week '+(w+1)+' — w/e '+wEnd.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}),total:wBill.grandTotal,hdays:wBill.holidayDays});
-  }
-  return rows;
+function getInvoiceCSS(){
+  // A5 = 148x210mm. Content width = 128mm (148 minus 10mm each side).
+  // We fix the page wrapper to exactly 128mm wide so Safari scales it
+  // correctly to fill A5 paper regardless of @page support.
+  return `*{box-sizing:border-box;margin:0;padding:0}
+html,body{font-family:Georgia,serif;font-size:11px;color:#1a1a1a;background:#fff;
+  -webkit-print-color-adjust:exact;print-color-adjust:exact}
+.page{width:128mm;min-height:188mm;padding:0;margin:0 auto;overflow:hidden}
+.pb{page-break-after:always;break-after:page}
+h1{font-size:15px;letter-spacing:1px}
+.sub{font-size:8px;letter-spacing:3px;text-transform:uppercase;color:#888}
+.hdr{border-bottom:2px solid #1a1a1a;padding-bottom:5px;margin-bottom:7px;display:flex;justify-content:space-between;align-items:flex-start}
+.biz{font-size:8px;color:#555;margin-top:3px;line-height:1.4}
+.hr{text-align:right;font-size:9px;color:#555}
+.bt{margin-bottom:6px;font-size:10px}
+table{width:100%;border-collapse:collapse;margin:5px 0;font-size:9px}
+th{background:#1a1a1a;color:#c8a84b;padding:4px 5px;text-align:left;font-size:8px}
+th:not(:first-child){text-align:right}
+td{padding:4px 5px;border-bottom:1px solid #e0d8cc}
+td:not(:first-child){text-align:right}
+.tr td{font-weight:bold;background:#f5f0e8}
+.gr td{font-weight:bold;font-size:11px;background:#1a1a1a;color:#c8a84b}
+.tot td{font-weight:bold;font-size:12px;background:#b94040;color:white}
+.pay{margin-top:5px;padding:5px 8px;background:#f5f0e8;border:1px solid #c8a84b;border-radius:3px;font-size:9px;line-height:1.5}
+.hol{margin-top:5px;padding:5px 8px;background:#eef3ff;border:1px solid #5a7ec8;border-radius:3px;font-size:9px}
+.em{margin-top:6px;padding:7px 10px;border:1px dashed #999;border-radius:3px;font-size:8px;color:#555}
+.ft{margin-top:7px;font-size:9px;font-weight:bold;border-top:2px solid #1a1a1a;padding-top:5px}
+a[href]:after{content:none!important}
+@media print{
+  @page{size:A5 portrait;margin:10mm}
+  html,body{margin:0;padding:0}
+  .page{width:100%;min-height:auto;margin:0;padding:0}
+  .pb{page-break-after:always;break-after:page}
+}`;
 }
 
-function printBill(cid){
-  const c=st.customers.find(x=>x.id===cid);if(!c)return;
+function buildInvoiceHTML(c){
   const bill=calcBill(c,getBillingStart(c),28);
   const biz=st.bizDetails;const gst=st.gstEnabled?st.gstRate:0;
   const td=new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});
   const bi=[biz.address,biz.phone?'Tel: '+biz.phone:'',biz.email?'Email: '+biz.email:''].filter(Boolean).join('<br/>');
   const pb=biz.paymentInfo?`<div class="pay"><strong>Payment Details:</strong><br/>${biz.paymentInfo.replace(/\n/g,'<br/>')}</div>`:'';
-  const css=`@page{size:A5 portrait;margin:12mm;margin-header:0;margin-footer:0}
-*{box-sizing:border-box}body{font-family:Georgia,serif;font-size:15px;color:#1a1a1a;margin:0}
-h1{font-size:22px;margin:0;letter-spacing:1px}.sub{font-size:11px;letter-spacing:3px;text-transform:uppercase;color:#888}
-.hdr{border-bottom:3px solid #1a1a1a;padding-bottom:8px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:flex-start}
-.biz{font-size:11px;color:#555;margin-top:4px;line-height:1.5}.hr{text-align:right;font-size:14px;color:#555}
-.bt{margin-bottom:10px}table{width:100%;border-collapse:collapse;margin:8px 0;font-size:14px}
-th{background:#1a1a1a;color:#c8a84b;padding:7px 8px;text-align:left;font-size:13px}th:not(:first-child){text-align:right}
-td{padding:7px 8px;border-bottom:1px solid #e0d8cc}td:not(:first-child){text-align:right}
-.tr td{font-weight:bold;background:#f5f0e8}.gr td{font-weight:bold;font-size:16px;background:#1a1a1a;color:#c8a84b}
-.tot td{font-weight:bold;font-size:18px;background:#b94040;color:white}
-.owe{margin-top:8px;padding:8px 12px;background:#fff3f3;border:1px solid #e08080;border-radius:3px;font-size:14px}
-.pay{margin-top:8px;padding:8px 12px;background:#f5f0e8;border:1px solid #c8a84b;border-radius:3px;font-size:14px;line-height:1.7}
-.hol{margin-top:8px;padding:8px 12px;background:#eef3ff;border:1px solid #5a7ec8;border-radius:3px;font-size:14px}
-.ft{margin-top:10px;font-size:14px;color:#1a1a1a;font-weight:bold;border-top:2px solid #1a1a1a;padding-top:6px}
-html{-webkit-print-color-adjust:exact;print-color-adjust:exact}
-a[href]:after{content:none!important}
-a[href]:before{content:none!important}
-::-webkit-scrollbar{display:none}
-@media print{
-  @page{margin:12mm;size:A5 portrait}
-  head title{display:none}
-  html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
-}
-`;
   const hdr=`<div class="hdr"><div><h1>🗞 ${biz.name||'C J TORODE'}</h1><div class="sub">Customer Invoice</div><div class="biz">${bi}</div></div>
 <div class="hr"><strong>Date:</strong> ${td}<br/><strong>Period:</strong> ${getBillingPeriod(c)||'4-week cycle'}${gst&&st.gstNumber?'<br/><strong>GST:</strong> '+st.gstNumber:''}${c.gstExempt?'<br/><em>GST Exempt</em>':''}</div></div>
 <div class="bt"><strong>Bill To:</strong><br/>${c.name}<br/>${c.address}${c.phone?'<br/>'+c.phone:''}</div>`;
@@ -923,14 +926,42 @@ ${outstanding>0?`<tr class="tr"><td colspan="${gst?4:3}">Previous outstanding</t
 ${bill.holidayDays>0?`<div class="hol">🏖 ${bill.holidayDays} holiday day${bill.holidayDays!==1?'s':''} deducted — ${bill.chargeDays} days charged</div>`:''}
 ${bill.anyPriceChange?`<div class="hol">💰 Price change applied mid-cycle — amounts calculated per day at correct rate</div>`:''}`;
   }
-  const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Invoice</title><style>${css}</style></head><body>
-${hdr}${table}
-${pb}
-${!c.email?`<div style="margin-top:10px;padding:12px 14px;border:1px dashed #999;border-radius:3px;font-size:14px;color:#555;">
-<strong>📧 Prefer to receive your invoice by email?</strong><br/>
-Simply email us at <strong>craigpapers@icloud.com</strong> with your house name and we will switch you to email billing — saving paper and making it easier to keep track.
-</div>`:''}
-<div class="ft">Thank you — ${biz.name||'C J Torode Newsagent'}</div></body></html>`;
+  const emailNudge = !(c.email||'').trim() ? `<div class="em"><strong>📧 Prefer to receive your invoice by email?</strong><br/>Email us at craigpapers@icloud.com with your house name and we will switch you to email billing.</div>` : '';
+  return `<div class="page">${hdr}${table}${pb}${emailNudge}<div class="ft">Thank you — ${biz.name||'C J Torode Newsagent'}</div></div>`;
+}
+
+function doPrint(html){
+  var prev = document.getElementById('_pf');
+  if(prev) prev.parentNode.removeChild(prev);
+  var ifr = document.createElement('iframe');
+  ifr.id = '_pf';
+  ifr.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;border:none;visibility:hidden';
+  document.body.appendChild(ifr);
+  var doc = ifr.contentDocument || ifr.contentWindow.document;
+  doc.open(); doc.write(html); doc.close();
+  // Use afterprint to clean up, focus main window after dismiss
+  ifr.contentWindow.addEventListener('afterprint', function(){
+    setTimeout(function(){ if(ifr.parentNode) ifr.parentNode.removeChild(ifr); }, 500);
+  });
+  setTimeout(function(){ ifr.contentWindow.print(); }, 500);
+}
+
+
+function buildWeeklyRows(c,start){
+  const rows=[];
+  for(let w=0;w<4;w++){
+    const wStart=new Date(start);wStart.setDate(wStart.getDate()+(w*7));
+    const wEnd=new Date(wStart);wEnd.setDate(wEnd.getDate()+6);
+    const wBill=calcBill(c,wStart.toISOString().split('T')[0],7);
+    rows.push({label:'Week '+(w+1)+' — w/e '+wEnd.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}),total:wBill.grandTotal,hdays:wBill.holidayDays});
+  }
+  return rows;
+}
+
+function printBill(cid){
+  const c=st.customers.find(x=>x.id===cid);if(!c)return;
+  const css=getInvoiceCSS();
+  const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Invoice</title><style>${css}</style></head><body>${buildInvoiceHTML(c)}</body></html>`;
   doPrint(html);
 }
 
@@ -980,8 +1011,8 @@ function emailBill(cid){
 
 function emailAllBills(custList){
   const allCusts = custList || (isDriver()?st.customers.filter(c=>c.roundId==='round-2'):st.customers);
-  const withEmail=allCusts.filter(c=>c.email);
-  const without=allCusts.filter(c=>!c.email);
+  const withEmail=allCusts.filter(c=>(c.email||'').trim());
+  const without=allCusts.filter(c=>!(c.email||'').trim());
   if(!withEmail.length){alert('No customers have email addresses on file.');return;}
   const msg='Send bills to '+withEmail.length+' customer'+(withEmail.length!==1?'s':'')+' with email addresses?'+(without.length?'\n\nNo email on file for:\n'+without.map(c=>c.name).join('\n'):'');
   if(!confirm(msg))return;
@@ -1009,6 +1040,8 @@ td{padding:7px 8px;border-bottom:1px solid #e0d8cc;vertical-align:top;font-size:
 <div class="hdr"><div><h1>🗞 ${biz.name||'C J TORODE'} — Delivery Sheet</h1><h2>${r.name} · ${r.area}</h2></div><div class="date">${td}</div></div>
 <table><thead><tr><th>#</th><th>Customer</th><th>Papers &amp; Magazines</th><th>✓</th></tr></thead><tbody>${rows}</tbody></table>
 <div class="ft">Total stops: ${custs.length} · ${biz.name||'C J Torode Newsagent'}${biz.phone?' · '+biz.phone:''}</div></body></html>`;
+  // Add self-print script
+  html = html.replace('</body></html>', '</body></html>');
   doPrint(html);
 }
 
@@ -1326,10 +1359,12 @@ function rBilling(){
   const over=tod()>ces;
   const dl=Math.ceil((ce-new Date())/86400000);
 
-  // Shared helper to get filtered customer list
+  // Shared helper to get filtered customer list — sorted by round/list order
   function getBillingCusts(){
     const allC = isDriver()?st.customers.filter(c=>c.roundId==='round-2'):st.customers;
-    return (st.billingRoundFilter&&st.billingRoundFilter!=='all') ? allC.filter(c=>c.roundId===st.billingRoundFilter) : allC;
+    const filtered = (st.billingRoundFilter&&st.billingRoundFilter!=='all') ? allC.filter(c=>c.roundId===st.billingRoundFilter) : allC;
+    // Sort by listOrder — this is the master delivery order set in applyListOrder()
+    return [...filtered].sort((a,b)=>(a.listOrder||0)-(b.listOrder||0));
   }
 
   // Top action bar — round filter + print/email buttons
@@ -1348,15 +1383,15 @@ function rBilling(){
       h('div',{style:{marginLeft:'auto',display:'flex',gap:'8px',flexWrap:'wrap'}},
         btn('b1',{style:{padding:'7px 16px',fontSize:'13px'}},'🖨 Print Bills',()=>{
           const custs = getBillingCusts();
-          const toPrint = custs.filter(c=>!c.email);
-          const skipped = custs.filter(c=>c.email);
+          const toPrint = custs.filter(c=>!(c.email||'').trim());
+          const skipped = custs.filter(c=>(c.email||'').trim());
           if(!toPrint.length){alert('Nothing to print — all customers have email addresses.\n\nUse "📧 Email ALL" instead.');return;}
-          toPrint.forEach(c=>printBill(c.id));
+          printAllBills(toPrint);
           toast('🖨 Printing '+toPrint.length+' bill'+(toPrint.length!==1?'s':'')+(skipped.length?' · Skipped '+skipped.length+' (have email)':''));
         }),
         btn('b4',{style:{padding:'7px 16px',fontSize:'13px'}},'📧 Email ALL',()=>{
           const custs = getBillingCusts();
-          const toEmail = custs.filter(c=>c.email);
+          const toEmail = custs.filter(c=>(c.email||'').trim());
           if(!toEmail.length){alert('No customers with email addresses in this selection.');return;}
           emailAllBills(toEmail);
         })
@@ -1365,8 +1400,8 @@ function rBilling(){
     h('div',{style:{fontSize:'12px',color:'#888',marginTop:'8px'}},
       (()=>{
         const custs = getBillingCusts();
-        const noEmail = custs.filter(c=>!c.email).length;
-        const hasEmail = custs.filter(c=>c.email).length;
+        const noEmail = custs.filter(c=>!(c.email||'').trim()).length;
+        const hasEmail = custs.filter(c=>(c.email||'').trim()).length;
         const roundName = (st.billingRoundFilter&&st.billingRoundFilter!=='all') ? (st.rounds.find(r=>r.id===st.billingRoundFilter)||{name:'Selected'}).name : 'All Rounds';
         return roundName+': 🖨 '+noEmail+' to print · 📧 '+hasEmail+' to email · Total: '+fmt(getBillingCusts().reduce((s,c)=>s+calcBill(c,getBillingStart(c),28).grandTotal,0));
       })()
@@ -1447,10 +1482,11 @@ function rBilling(){
             btn('b1',{style:{flex:'1'}},'🖨 Print Bills (no email)',()=>{
               const allC = isDriver()?st.customers.filter(c=>c.roundId==='round-2'):st.customers;
               const roundFiltered = (st.billingRoundFilter&&st.billingRoundFilter!=='all') ? allC.filter(c=>c.roundId===st.billingRoundFilter) : allC;
-              const toPrint = roundFiltered.filter(function(c){return !c.email;});
-              const skipped = roundFiltered.filter(function(c){return c.email;});
+              const sorted = [...roundFiltered].sort((a,b)=>(a.listOrder||0)-(b.listOrder||0));
+              const toPrint = sorted.filter(function(c){return !(c.email||'').trim();});
+              const skipped = sorted.filter(function(c){return (c.email||'').trim();});
               if(!toPrint.length){alert('Nothing to print in this selection.\n\nAll customers have email addresses — use "📧 Email ALL Bills" instead.');return;}
-              toPrint.forEach(function(c){printBill(c.id);});
+              printAllBills(toPrint);
               if(skipped.length)toast('🖨 Printing '+toPrint.length+' bill'+(toPrint.length!==1?'s':'')+' · Skipped '+skipped.length+' (have email)');
               else toast('🖨 Printing '+toPrint.length+' bill'+(toPrint.length!==1?'s':''));
             }),
@@ -2123,6 +2159,20 @@ function rModals(){
           ps('stock');render();toast('✓ Added '+toAdd.length+' new title'+(toAdd.length!==1?'s':''));
         }),
         h('div',{style:{fontSize:'12px',color:'#888',marginBottom:'16px'}},'Only adds titles not already in your list — nothing is changed or removed.'),
+        btn('b5 bf',{style:{marginBottom:'4px'}},'🔧 Fix Zero Prices from Defaults',async ()=>{
+          const fixed=[];
+          st.stock=st.stock.map(function(s){
+            if(s.sellPrice>0) return s;
+            const def=IST.find(function(d){return d.title.toLowerCase()===s.title.toLowerCase();});
+            if(def&&def.sellPrice>0){fixed.push(s.title+' → £'+def.sellPrice.toFixed(2));return{...s,sellPrice:def.sellPrice};}
+            return s;
+          });
+          if(!fixed.length){alert('No zero prices found that match defaults — nothing changed.');return;}
+          ps('stock');
+          render();
+          toast('✓ Fixed '+fixed.length+' price'+(fixed.length!==1?'s':'')+': '+fixed.slice(0,3).join(', ')+(fixed.length>3?' + more':''));
+        }),
+        h('div',{style:{fontSize:'12px',color:'#888',marginBottom:'16px'}},'Restores sell prices from built-in defaults for any stock item showing £0.00. Only fixes items that exist in the defaults list.'),
         h('div',{className:'sd'},'☁ Supabase Connection'),
         getSB()
           ? h('div',{},
@@ -2761,10 +2811,9 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
       // ── ACTIONS ───────────────────────────────────────────────────
       h('div',{style:{display:'flex',gap:'10px',flexWrap:'wrap',marginBottom:'40px'}},
         h('button',{className:'btn b5',onclick:()=>{
-          const html = shopInvoiceHTML(wk, biz);
-          const win = window.open('','_blank','width=750,height=900');
-          win.document.write(html); win.document.close();
-          setTimeout(()=>win.print(), 500);
+          let html = shopInvoiceHTML(wk, biz);
+          html = html.replace('</body></html>', '</body></html>');
+          doPrint(html);
         }},'🖨 Print Invoice'),
         h('button',{className:'btn b4',onclick:()=>{
           const html = shopInvoiceHTML(wk, biz);
@@ -2869,10 +2918,9 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
               h('div',{style:{display:'flex',gap:'8px'}},
                 h('button',{className:'btn b2',onclick:()=>{st.shopEditWeek=wk.id;render();}}, '✏ Edit'),
                 h('button',{className:'btn b4',onclick:()=>{
-                  const html = shopInvoiceHTML(wk, biz);
-                  const win = window.open('','_blank','width=750,height=900');
-                  win.document.write(html); win.document.close();
-                  setTimeout(()=>win.print(),500);
+                  let html = shopInvoiceHTML(wk, biz);
+                  html = html.replace('</body></html>', '</body></html>');
+                  doPrint(html);
                 }}, '🖨 Print'),
                 h('button',{className:'btn b3',style:{color:'#b94040'},onclick:()=>{
                   if(confirm('Delete this week\'s bill?')){const id=wk.id;st.shopWeeks.splice(wi,1);DB.deleteShopWeek(id);render();}

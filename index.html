@@ -597,44 +597,131 @@ const st={
 
 // ── HARDCODED LIST ORDER (set May 2026) ──────────────────────────
 function applyListOrder(){
-  const order = [
-    'MR & MRS RICHMOND',      // 1
-    'PALMA',                   // 2
-    'MR BEHAN',                // 3
-    'MR & MRS ATKIN',          // 4
-    'MR & MRS WRIGHT',         // 5
-    'MR & MRS KAINES',         // 6
-    'MRS SAVIDENT',            // 7
-    'NORTH COTTAGE',           // 8
-    'LA FOLIE',                // 9
-    'SANTA ANNA',              // 10
-    'MR & MRS ENGLAND',        // 11
-    'MRS WRIGHT',              // 12
-    'MR & MRS COHU',           // 13
-    'MOUNT LOFTY',             // 14
-    'MR & MRS LE CRAS',        // 15
-    'MR & MRS COLLAS',         // 16
-    'MR J DOMAILLE',           // 17
-    'MR & MRS DE LA RUE',      // 18
-    'MR & MRS PATTEN',         // 19
-    'MR & MRS LE CHEMINANT',   // 20
-    'THE WILLOWS',             // 21
-    'MRS MCCOLL',              // 22
-    '13 COURTIL LE CLEMENT',   // 23
-    'MR & MRS HOUCHARD',       // 24
-    'ROOM 227',                // 25
-    'D OGIER',                 // 26
-    'MR J HODKINSON',          // 27
+  const round1 = [
+    'HARVEY & NIKKI SMITH',    // 1
+    'MR & MRS RICHMOND',       // 2
+    'PALMA',                   // 3
+    'MR BEHAN',                // 4
+    'MR & MRS ATKIN',          // 5
+    'MR & MRS WRIGHT',         // 6
+    'MR & MRS KAINES',         // 7 (also 8 — handled by first match)
+    'MRS SAVIDENT',            // 9
+    'NORTH COTTAGE',           // 10
+    'LA FOLIE',                // 11
+    'SANTA ANNA',              // 12
+    'MRS WRIGHT',              // 13
+    'MR & MRS COHU',           // 14
+    'MOUNT LOFTY',             // 15
+    'MR & MRS LE CRAS',        // 16
+    'MR & MRS COLLAS',         // 17
+    'MR J DOMAILLE',           // 18
+    'MR & MRS DE LA RUE',      // 19
+    'MR & MRS PATTEN',         // 20
+    'MR & MRS LE CHEMINANT',   // 21
+    'THE WILLOWS',             // 22
+    'MRS MCCOLL',              // 23
+    '13 COURTIL LE CLEMENT',   // 24
+    'MR & MRS HOUCHARD',       // 25
+    'ROOM 227',                // 26
+    'D OGIER',                 // 27
+    'MR J HODKINSON',          // 28
+    'MR PARSOMS',              // 29
+    'ROOM 241',                // 30
+    'MR & MRS STEWART',        // 31
+    'ROOM 144',                // 32
+    'ROOM 145',                // 33
+    'ROOM 141',                // 34
+    'ROOM 142',                // 35
+    'ROOM 202',                // 36
+    'MR & MRS KENDALL',        // 37
+    'MR & MRS KINDER',         // 38
+    'SYARA',                   // 39
+    'MRS IRVING',              // 40
+    'MR & MRS GIRARD',         // 41
+    'MR & MRS DRAKE',          // 42
+    'TRENANCE',                // 43
+    'MRS MATHEWS',             // 44
+    'MRS LE BER',              // 45
+    'MR & MRS J TOLCHER',      // 46 (was 47)
+    'MR & MRS CREED',          // 47 (was 48)
   ];
-  const endOrder = [
-    'MR & MRS J TOLCHER',      // 47
-    'MR & MRS CREED',          // 48
+  const round2 = [
+    'ST IVES',                 // 1
+    'AU SON DES CLOCHES',      // 2
+    'MR & MRS BONNEL',         // 3
+    'MR & MRS LAINE',          // 4
+    'MR & MRS BOTT',           // 5
+    'LA DAEXIEME',             // 6
+    'MR & MRS JENNER',         // 7
+    'MR & MRS LOVERIDGE',      // 8
+    'MR & MRS WARRY',          // 9
+    'DR & MRS DORIAN',         // 10
+    'MR & MRS MILLMAN',        // 11
+    '5 LANCRESSE',             // 12
+    'MR & MRS LE CRAS',        // 13
+    'MRS JONES',               // 14
+    'MR & MRS ALLAN',          // 15
+    'MR & MRS DONALDSON',      // 16
+    'LITTLE CROFT',            // 17
+    'MR & MRS RALEIGH',        // 18
+    'MR HARNDEN',              // 19
+    'THE HIDE',                // 20
+    '8 LE CLOTURE',            // 21
+    'MR & MRS ATTER',          // 22
+    'BEACH COTTAGE',           // 23
+    'THE BEACH HOUSE',         // 24
+    'POND HOUSE',              // 25
+    'MRS BESSEL',              // 26
+    'MRS SEBIRE',              // 27
+    'MELANDRA',                // 28
+    'MRS DAVISON',             // 29
+    'MR & MRS HALLETT',        // 30
+    'MR & MRS TEE',            // 31
+    'MR DOMAILLE',             // 32
+    'MR & MRS FOSS',           // 33
+    'MR & MRS STUART',         // 34
+    'MR & MRS SKATES',         // 35
+    'MR & MRS TAYLOR',         // 36
+    'MR & MRS BALL',           // 37
+    'MR BRACHE',               // 38
+    'MRS GORMAN',              // 39
+    'MR & MRS CLARK',          // 40
+    'MRS ALLISON',             // 41
+    'LES MAUX',                // 42
+    'MR & MRS SMITH',          // 43
+    'MR RANGER',               // 44
+    'MRS BURT',                // 45
+    'MRS LE FLOCK',            // 46
+    'MR ROBINSON',             // 47
+    'MR & MRS ELLIS',          // 48
+    'LE DIXIEME',              // 49
+    'MISS MARTEL',             // 50
+    'MR & MRS SUNDERLAND',     // 51
+    'MR & MRS HESSE',          // 52
+    'ROYAL GUERNSEY GOLF CLUB',// 53
+    'LANCRESSE GOLF CLUB',     // 54
+    'LA CLOTON COTTAGE',       // 55
   ];
+  // Build lookup maps: name -> {listOrder, roundOrder, roundId}
+  // Round 1 customers get listOrder 1-47, Round 2 get 101-155
+  // This keeps them separate when sorting "All Rounds" (R1 first, then R2)
+  const r1map = {};
+  round1.forEach((n,i) => { r1map[n.toUpperCase()] = i+1; });
+  const r2map = {};
+  round2.forEach((n,i) => { r2map[n.toUpperCase()] = i+1; });
+
   st.customers = st.customers.map(c => {
-    const idx = order.findIndex(n => c.name.toUpperCase() === n.toUpperCase());
-    if(idx !== -1) return {...c, listOrder: idx + 1, roundOrder: idx + 1};
-    const endIdx = endOrder.findIndex(n => c.name.toUpperCase() === n.toUpperCase());
-    if(endIdx !== -1) return {...c, listOrder: 47 + endIdx, roundOrder: 47 + endIdx};
+    const name = (c.name||'').toUpperCase();
+    // Check Round 1
+    const r1idx = r1map[name];
+    if(r1idx !== undefined){
+      return {...c, listOrder: r1idx, roundOrder: r1idx};
+    }
+    // Check Round 2
+    const r2idx = r2map[name];
+    if(r2idx !== undefined){
+      return {...c, listOrder: 100 + r2idx, roundOrder: r2idx};
+    }
     return c;
   });
 }

@@ -1375,7 +1375,8 @@ function rBilling(){
           h('div',{style:{marginTop:'6px',fontSize:'13px'}},over?h('span',{style:{color:'#b94040',fontWeight:'bold'}},'⚠ Cycle overdue — ready to close'):h('span',{style:{color:'#2a5e2a'}},'✓ '+dl+' day'+(dl!==1?'s':'')+' remaining'))
         ),
         h('div',{style:{display:'flex',flexDirection:'column',gap:'8px',minWidth:'200px'}},
-          btn('b1',{style:{background:over?'#b94040':'#1a1a1a',fontSize:'13px'}},'✓ Close Cycle & Roll Over',()=>{st.showCloseCycle=true;render();}),
+          btn('b5',{style:{fontSize:'13px'}},'✓ Close Round 1',()=>closeCycle('billingStart','billingPeriod')),
+          btn('b4',{style:{fontSize:'13px'}},'✓ Close Round 2',()=>closeCycle('billingStart2','billingPeriod2')),
           h('div',{style:{fontSize:'11px',color:'#aaa',textAlign:'center'}},'Bills each account then starts next cycle')
         )
       ),

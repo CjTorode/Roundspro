@@ -2283,6 +2283,36 @@ function rModals(){
           toast('✓ Fixed '+fixed.length+' price'+(fixed.length!==1?'s':'')+': '+fixed.slice(0,3).join(', ')+(fixed.length>3?' + more':''));
         }),
         h('div',{style:{fontSize:'12px',color:'#888',marginBottom:'16px'}},'Restores sell prices from built-in defaults for any stock item showing £0.00. Only fixes items that exist in the defaults list.'),
+        btn('b5 bf',{style:{marginBottom:'4px'}},'🔧 Fix Duplicate "The Guernsey Press"',async ()=>{
+          // Rename "The Guernsey Press" -> "Guernsey Press" in all customer paper lists
+          const OLD='The Guernsey Press'; const NEW='Guernsey Press';
+          let custFixed=0;
+          st.customers=st.customers.map(c=>{
+            const hasDup=c.papers&&c.papers.includes(OLD);
+            if(!hasDup) return c;
+            // Replace old name with new in papers
+            const newPapers=[...new Set(c.papers.map(p=>p===OLD?NEW:p))];
+            // Add remove/add log entries
+            const today=tod();
+            const newLog=[...(c.paperLog||[]),
+              {title:OLD,action:'remove',date:today},
+              ...(c.papers.includes(NEW)?[]:[{title:NEW,action:'add',date:today}])
+            ];
+            custFixed++;
+            return {...c,papers:newPapers,paperLog:newLog};
+          });
+          // Remove the "The Guernsey Press" stock item
+          const before=st.stock.length;
+          st.stock=st.stock.filter(s=>s.title!==OLD);
+          const stockRemoved=before-st.stock.length;
+          if(custFixed||stockRemoved){
+            ps('customers');ps('stock');render();
+            toast('✓ Fixed '+custFixed+' customer'+(custFixed!==1?'s':'')+', removed '+stockRemoved+' duplicate stock item');
+          } else {
+            alert('No duplicate found — nothing changed.');
+          }
+        }),
+        h('div',{style:{fontSize:'12px',color:'#888',marginBottom:'16px'}},'Merges "The Guernsey Press" into "Guernsey Press" across all customer records and removes the duplicate stock entry.'),
         h('div',{className:'sd'},'☁ Supabase Connection'),
         getSB()
           ? h('div',{},

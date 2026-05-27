@@ -2911,10 +2911,17 @@ function render(){
     if(s.type==='magazine'){
       if(s.freq==='weekly'){fix.deliveryDays=[3];changed=true;}
       else if(s.freq==='monthly'){fix.deliveryDays=[];changed=true;}
+    } else if(s.type==='paper'&&(!s.deliveryDays||!s.deliveryDays.length)){
+      // Fix missing delivery days for papers
+      var t=(s.title||'').toLowerCase();
+      if(t.includes('saturday')){fix.deliveryDays=[6];}
+      else if(t.includes('sunday')||t==='mail on sunday'||t==='sun on sunday'){fix.deliveryDays=[0];}
+      else{fix.deliveryDays=[1,2,3,4,5];}
+      changed=true;
     }
     return fix;
   });
-  if(changed) S.set('stock', st.stock); // local only on startup
+  if(changed){S.set('stock',st.stock);DB.saveStock();}
 })();
 
 checkWedCharge();

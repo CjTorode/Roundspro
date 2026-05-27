@@ -826,16 +826,20 @@ function checkWedCharge(){
 
 // Monthly magazines are included automatically in the 4-week cycle bill
 
-function closeCycle(){
-  const ce=new Date(st.billingStart);ce.setDate(ce.getDate()+27);
+function closeCycle(startKey, periodKey){
+  // startKey: 'billingStart' or 'billingStart2'
+  // Only charge customers whose billing start matches
+  const ce=new Date(st[startKey]);ce.setDate(ce.getDate()+27);
   const ns=new Date(ce);ns.setDate(ns.getDate()+1);
   const ne=new Date(ns);ne.setDate(ne.getDate()+27);
   st.customers=st.customers.map(c=>{
-    const b=calcBill(c,getBillingStart(c),28);
+    // Only charge this customer if their billing start matches the cycle being closed
+    if(getBillingStart(c)!==st[startKey]) return c;
+    const b=calcBill(c,st[startKey],28);
     return{...c,balance:parseFloat((c.balance-b.grandTotal).toFixed(2))};
   });
-  st.billingStart=ns.toISOString().split('T')[0];
-  st.billingPeriod=fds(st.billingStart)+' – '+fds(ne.toISOString().split('T')[0]);
+  st[startKey]=ns.toISOString().split('T')[0];
+  st[periodKey]=fds(st[startKey])+' – '+fds(ne.toISOString().split('T')[0]);
   st.showCloseCycle=false;pa();render();toast('✓ Cycle closed — next period started');
 }
 
@@ -1919,7 +1923,8 @@ function rModals(){
       ),
       h('div',{className:'a2',style:{marginBottom:'14px'}},'⚠ This will charge each account and roll to the next period. This cannot be undone.'),
       h('div',{style:{display:'flex',gap:'10px'}},
-        btn('b5',{style:{flex:'1'}},'✓ Confirm & Roll Over',closeCycle),
+        btn('b5',{style:{flex:'1'}},'✓ Close Round 1 Only',()=>closeCycle('billingStart','billingPeriod')),
+        btn('b4',{style:{flex:'1'}},'✓ Close Round 2 Only',()=>closeCycle('billingStart2','billingPeriod2')),
         btn('b3',{style:{flex:'.4'}},'Cancel',()=>{st.showCloseCycle=false;render();})
       )
     ),()=>{st.showCloseCycle=false;render();}));

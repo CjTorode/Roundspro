@@ -508,12 +508,8 @@ async function startApp(){
   }, 60000);
 }
 
-const IR=[{id:1,name:'Elm Street Area',area:'North Side'},{id:2,name:'Maple Road Area',area:'South Side'}];
-const IC=[
-  {id:1,name:'Margaret Thompson',address:'14 Elm Street',phone:'07712 345678',papers:['Daily Mail','Radio Times'],balance:-4.50,deliveryCharge:.5,gstExempt:false,roundId:1,roundOrder:1,deliveryNote:'',holidays:[]},
-  {id:2,name:'Robert Jenkins',address:'3 Oak Avenue',phone:'07823 456789',papers:['The Guardian','Hello!'],balance:0,deliveryCharge:.5,gstExempt:false,roundId:1,roundOrder:2,deliveryNote:'Leave by side gate',holidays:[]},
-  {id:3,name:'Susan Clark',address:'27 Maple Road',phone:'07934 567890',papers:['The Sun'],balance:-2.20,deliveryCharge:.5,gstExempt:true,roundId:2,roundOrder:1,deliveryNote:'',holidays:[]},
-];
+const IR=[];
+const IC=[];
 const IST=[
   // Guernsey local paper — Mon-Sat
   {id:0, title:'Guernsey Press',        type:'paper',freq:'daily',deliveryDays:[1,2,3,4,5,6],costPrice:0,sellPrice:1.40,stock:0,gstApplicable:false},

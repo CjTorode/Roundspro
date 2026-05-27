@@ -1991,7 +1991,22 @@ function rModals(){
         h('input',{type:'checkbox',checked:ec.gstExempt||false,onchange:e=>st.showEditCustomer.gstExempt=e.target.checked}),'GST Exempt'
       ),
       btn('b1 bf','Save Changes',()=>{
-        st.customers=st.customers.map(cu=>cu.id===ec.id?{...ec}:cu);
+        const original=st.customers.find(cu=>cu.id===ec.id);
+        const oldPapers=original?(original.papers||[]):[];
+        const newPapers=ec.papers||[];
+        const cycleStart=getBillingStart(ec);
+        var log=[...(ec.paperLog||[])];
+        // Ensure every ticked paper has an "add" entry from cycle start
+        newPapers.forEach(function(p){
+          var hasAdd=log.some(function(e){return e.title===p&&e.action==='add';});
+          if(!hasAdd)log.push({title:p,action:'add',date:cycleStart});
+        });
+        // Papers unticked since last save get a remove entry
+        oldPapers.forEach(function(p){
+          if(!newPapers.includes(p))log.push({title:p,action:'remove',date:tod()});
+        });
+        var updated={...ec,paperLog:log};
+        st.customers=st.customers.map(cu=>cu.id===ec.id?updated:cu);
         ps('customers');st.showEditCustomer=null;render();toast('✓ '+ec.name+' updated');
       })
     ),()=>{st.showEditCustomer=null;render();}));

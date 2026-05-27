@@ -708,16 +708,19 @@ function calcBill(c,start,days){
   const gst=st.gstEnabled?st.gstRate:0;
   const hd=start?holDays(c,start,days):0;
 
-  // Get all titles that were active at any point during the cycle
+  // Get all titles that were active at any point during the cycle.
+  // Always include current papers array — paperLog entries can add/remove on top.
   var titlesInCycle=new Set();
+  (c.papers||[]).forEach(function(p){titlesInCycle.add(p);});
   if(start&&(c.paperLog||[]).length){
     var cycleEnd=new Date(start);cycleEnd.setDate(cycleEnd.getDate()+days-1);
     var cycleEndStr=cycleEnd.toISOString().split('T')[0];
-    // Any title added on or before cycle end
+    // Add any paper added via log during/before cycle
     c.paperLog.forEach(function(e){if(e.action==='add'&&e.date<=cycleEndStr)titlesInCycle.add(e.title);});
-  } else {
-    // No log — use current papers
-    (c.papers||[]).forEach(function(p){titlesInCycle.add(p);});
+    // Remove any paper that was removed before the cycle started
+    c.paperLog.forEach(function(e){
+      if(e.action==='remove'&&e.date<start)titlesInCycle.delete(e.title);
+    });
   }
 
   // Calculate delivery days — days customer received anything

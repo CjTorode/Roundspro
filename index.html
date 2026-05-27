@@ -2313,6 +2313,19 @@ function rModals(){
           }
         }),
         h('div',{style:{fontSize:'12px',color:'#888',marginBottom:'16px'}},'Merges "The Guernsey Press" into "Guernsey Press" across all customer records and removes the duplicate stock entry.'),
+        btn('b5 bf',{style:{marginBottom:'4px'}},'🔧 Reset ALL Customer Paper Histories',async ()=>{
+          if(!confirm('This will reset the paper history for ALL customers to their current ticked papers as of today. Billing will use current papers for the whole cycle. Continue?')) return;
+          const today = tod();
+          st.customers = st.customers.map(c => {
+            const cycleStart = (c.roundId===st.rounds.find(r=>r.name&&r.name.includes('2'))||{id:null}).id ? st.billingStart2 : st.billingStart;
+            const freshLog = (c.papers||[]).map(p=>({title:p, action:'add', date:cycleStart||st.billingStart}));
+            return {...c, paperLog: freshLog};
+          });
+          ps('customers');
+          render();
+          toast('✓ Reset paper history for '+st.customers.length+' customers');
+        }),
+        h('div',{style:{fontSize:'12px',color:'#888',marginBottom:'16px'}},'Resets every customer paper history to current papers from billing cycle start. Use after a data migration.'),
         h('div',{className:'sd'},'☁ Supabase Connection'),
         getSB()
           ? h('div',{},

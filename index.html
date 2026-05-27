@@ -838,15 +838,10 @@ function closeCycle(){
 }
 
 function doPrint(html){
-  var prev=document.getElementById('_pf');if(prev)prev.parentNode.removeChild(prev);
-  var ifr=document.createElement('iframe');
-  ifr.id='_pf';
-  ifr.style.cssText='position:fixed;top:0;left:0;width:1px;height:1px;border:none;visibility:hidden';
-  document.body.appendChild(ifr);
-  var doc=ifr.contentDocument||ifr.contentWindow.document;
-  doc.open();doc.write(html);doc.close();
-  ifr.contentWindow.addEventListener('afterprint',function(){setTimeout(function(){if(ifr.parentNode)ifr.parentNode.removeChild(ifr);},500);});
-  setTimeout(function(){ifr.contentWindow.print();},500);
+  var w=window.open('','_blank');
+  if(!w){alert('Please allow pop-ups for roundspro.netlify.app in Safari (Safari menu → Settings for this website → Pop-up Windows → Allow), then try again.');return;}
+  w.document.open();w.document.write(html);w.document.close();
+  w.addEventListener('load',function(){w.print();});
 }
 
 function printAllBills(custList){
@@ -867,8 +862,7 @@ function buildInvoiceHTML(c){
   const biz=st.bizDetails;const gst=st.gstEnabled?st.gstRate:0;
   const td=new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});
   const bi=[biz.address,biz.phone?'Tel: '+biz.phone:'',biz.email?'Email: '+biz.email:''].filter(Boolean).join('<br/>');
-  const pb=biz.paymentInfo?`<div class="pay"><strong>Payment Details:</strong><br/>${biz.paymentInfo.replace(/
-/g,'<br/>')}</div>`:'';
+  const pb=biz.paymentInfo?'<div class="pay"><strong>Payment Details:</strong><br/>'+biz.paymentInfo.split('\n').join('<br/>')+'</div>':'';
   const hdr=`<div class="hdr"><div><h1>&#128240; ${biz.name||'C J TORODE'}</h1><div class="sub">Customer Invoice</div><div class="biz">${bi}</div></div><div class="hr"><strong>Date:</strong> ${td}<br/><strong>Period:</strong> ${getBillingPeriod(c)||'4-week cycle'}${c.gstExempt?'<br/><em>GST Exempt</em>':''}</div></div><div class="bt"><strong>Bill To:</strong><br/>${c.name}<br/>${c.address}${c.phone?'<br/>'+c.phone:''}</div>`;
   let table='';
   if(st.billStyle==='weekly'){

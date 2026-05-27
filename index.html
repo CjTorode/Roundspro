@@ -841,22 +841,27 @@ function closeCycle(){
 
 function doPrint(html){
   var w=window.open('','_blank');
-  if(!w){alert('Please allow pop-ups for roundspro.netlify.app in Safari (Safari menu → Settings for this website → Pop-up Windows → Allow), then try again.');return;}
-  w.document.open();w.document.write(html);w.document.close();
-  w.addEventListener('load',function(){w.print();});
+  if(!w){alert('Please allow pop-ups for roundspro.netlify.app in Safari settings, then try again.');return;}
+  // Add auto-print script inside the HTML
+  var printHtml=html.replace('</body>','<script>window.onload=function(){setTimeout(function(){window.print();},400);}<\/script></body>');
+  w.document.open();w.document.write(printHtml);w.document.close();
 }
 
 function printAllBills(custList){
-  const pages=custList.map(c=>buildInvoiceHTML(c));
-  if(!pages.length)return;
+  if(!custList.length)return;
   const css=getInvoiceCSS();
-  const joined=pages.map((p,i)=>i<pages.length-1?p.replace('<div class="page">','<div class="page pb">'):p).join('');
-  const html='<!DOCTYPE html><html><head><meta charset="utf-8"><style>'+css+'</style></head><body>'+joined+'</body></html>';
+  // Build each invoice as a full page with page break after (except last)
+  const pages=custList.map(function(c,i){
+    const body=buildInvoiceHTML(c);
+    const pb=i<custList.length-1?'<div style="page-break-after:always"></div>':'';
+    return body+pb;
+  });
+  const html='<!DOCTYPE html><html><head><meta charset="utf-8"><style>'+css+'</style></head><body>'+pages.join('')+'</body></html>';
   doPrint(html);
 }
 
 function getInvoiceCSS(){
-  return '@page{size:A5 portrait;margin:10mm}*{box-sizing:border-box;margin:0;padding:0}html,body{font-family:Georgia,serif;font-size:11px;color:#1a1a1a;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}.page{width:128mm;height:188mm;max-height:188mm;overflow:hidden;padding:0;margin:0 auto}.pb{page-break-after:always;break-after:page;margin-bottom:0;padding-bottom:0}h1{font-size:15px;letter-spacing:1px}.sub{font-size:8px;letter-spacing:3px;text-transform:uppercase;color:#888}.hdr{border-bottom:2px solid #1a1a1a;padding-bottom:5px;margin-bottom:7px;display:flex;justify-content:space-between;align-items:flex-start}.biz{font-size:8px;color:#555;margin-top:3px;line-height:1.4}.hr{text-align:right;font-size:9px;color:#555}.bt{margin-bottom:6px;font-size:10px}table{width:100%;border-collapse:collapse;margin:5px 0;font-size:9px}th{background:#1a1a1a;color:#c8a84b;padding:4px 5px;text-align:left;font-size:8px}th:not(:first-child){text-align:right}td{padding:4px 5px;border-bottom:1px solid #e0d8cc}td:not(:first-child){text-align:right}.tr td{font-weight:bold;background:#f5f0e8}.gr td{font-weight:bold;font-size:11px;background:#1a1a1a;color:#c8a84b}.tot td{font-weight:bold;font-size:12px;background:#b94040;color:white}.pay{margin-top:5px;padding:5px 8px;background:#f5f0e8;border:1px solid #c8a84b;border-radius:3px;font-size:9px}.hol{margin-top:5px;padding:5px 8px;background:#eef3ff;border:1px solid #5a7ec8;border-radius:3px;font-size:9px}.em{margin-top:6px;padding:7px 10px;border:1px dashed #999;border-radius:3px;font-size:8px;color:#555}.ft{margin-top:7px;font-size:9px;font-weight:bold;border-top:2px solid #1a1a1a;padding-top:5px}a[href]:after{content:none!important}@media print{@page{size:A5 portrait;margin:10mm}.page{width:100%;margin:0}}';
+  return '@page{size:A5 portrait;margin:12mm}*{box-sizing:border-box}body{font-family:Georgia,serif;font-size:13px;color:#1a1a1a;margin:0}h1{font-size:20px;margin:0;letter-spacing:1px}.sub{font-size:10px;letter-spacing:3px;text-transform:uppercase;color:#888}.hdr{border-bottom:3px solid #1a1a1a;padding-bottom:8px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:flex-start}.biz{font-size:10px;color:#555;margin-top:4px;line-height:1.5}.hr{text-align:right;font-size:12px;color:#555}.bt{margin-bottom:10px}table{width:100%;border-collapse:collapse;margin:8px 0;font-size:12px}th{background:#1a1a1a;color:#c8a84b;padding:7px 8px;text-align:left;font-size:11px}th:not(:first-child){text-align:right}td{padding:7px 8px;border-bottom:1px solid #e0d8cc}td:not(:first-child){text-align:right}.tr td{font-weight:bold;background:#f5f0e8}.gr td{font-weight:bold;font-size:14px;background:#1a1a1a;color:#c8a84b}.tot td{font-weight:bold;font-size:16px;background:#b94040;color:white}.pay{margin-top:8px;padding:8px 12px;background:#f5f0e8;border:1px solid #c8a84b;border-radius:3px;font-size:12px;line-height:1.7}.hol{margin-top:8px;padding:8px 12px;background:#eef3ff;border:1px solid #5a7ec8;border-radius:3px;font-size:12px}.em{margin-top:10px;padding:10px 12px;border:1px dashed #999;border-radius:3px;font-size:11px;color:#555}.ft{margin-top:10px;font-size:12px;font-weight:bold;border-top:2px solid #1a1a1a;padding-top:6px}html{-webkit-print-color-adjust:exact;print-color-adjust:exact}a[href]:after{content:none!important}@media print{@page{size:A5 portrait;margin:12mm}html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}';
 }
 
 function buildInvoiceHTML(c){
@@ -892,7 +897,7 @@ function buildInvoiceHTML(c){
     if(bill.holidayDays>0)table+='<div class="hol">&#127958; '+bill.holidayDays+' holiday day'+(bill.holidayDays!==1?'s':'')+' deducted &mdash; '+bill.chargeDays+' days charged</div>';
   }
   var emailNudge=!(c.email||'').trim()?'<div class="em"><strong>Prefer email invoices?</strong><br/>Email craigpapers@icloud.com with your house name.</div>':'';
-  return '<div class="page">'+hdr+table+pb+emailNudge+'<div class="ft">Thank you &mdash; '+(biz.name||'C J Torode Newsagent')+'</div></div>';
+  return hdr+table+pb+emailNudge+'<div class="ft">Thank you — '+(biz.name||'C J Torode Newsagent')+'</div>';
 }
 
 

@@ -858,25 +858,39 @@ function getInvoiceCSS(){
 }
 
 function buildInvoiceHTML(c){
-  const bill=calcBill(c,getBillingStart(c),28);
-  const biz=st.bizDetails;const gst=st.gstEnabled?st.gstRate:0;
-  const td=new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});
-  const bi=[biz.address,biz.phone?'Tel: '+biz.phone:'',biz.email?'Email: '+biz.email:''].filter(Boolean).join('<br/>');
-  const pb=biz.paymentInfo?'<div class="pay"><strong>Payment Details:</strong><br/>'+biz.paymentInfo.split('\n').join('<br/>')+'</div>':'';
-  const hdr=`<div class="hdr"><div><h1>&#128240; ${biz.name||'C J TORODE'}</h1><div class="sub">Customer Invoice</div><div class="biz">${bi}</div></div><div class="hr"><strong>Date:</strong> ${td}<br/><strong>Period:</strong> ${getBillingPeriod(c)||'4-week cycle'}${c.gstExempt?'<br/><em>GST Exempt</em>':''}</div></div><div class="bt"><strong>Bill To:</strong><br/>${c.name}<br/>${c.address}${c.phone?'<br/>'+c.phone:''}</div>`;
-  let table='';
+  var bill=calcBill(c,getBillingStart(c),28);
+  var biz=st.bizDetails;var gst=st.gstEnabled?st.gstRate:0;
+  var td=new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});
+  var bi=[biz.address,biz.phone?'Tel: '+biz.phone:'',biz.email?'Email: '+biz.email:''].filter(Boolean).join('<br/>');
+  var pb=biz.paymentInfo?'<div class="pay"><strong>Payment Details:</strong><br/>'+biz.paymentInfo.split('\n').join('<br/>')+'</div>':'';
+  var hdr='<div class="hdr"><div><h1>&#128240; '+(biz.name||'C J TORODE')+'</h1><div class="sub">Customer Invoice</div><div class="biz">'+bi+'</div></div>'
+    +'<div class="hr"><strong>Date:</strong> '+td+'<br/><strong>Period:</strong> '+(getBillingPeriod(c)||'4-week cycle')+(c.gstExempt?'<br/><em>GST Exempt</em>':'')+'</div></div>'
+    +'<div class="bt"><strong>Bill To:</strong><br/>'+c.name+'<br/>'+c.address+(c.phone?'<br/>'+c.phone:'')+'</div>';
+  var table='';
+  var outstanding=c.balance<0?Math.abs(c.balance):0;
+  var totalPayable=bill.grandTotal+outstanding;
   if(st.billStyle==='weekly'){
-    const wr=buildWeeklyRows(c,getBillingStart(c));
-    const outstanding=c.balance<0?Math.abs(c.balance):0;
-    const totalPayable=bill.grandTotal+outstanding;
-    table=`<table><thead><tr><th>Period</th><th>Amount</th></tr></thead><tbody>${wr.map(r=>`<tr><td>${r.label}${r.hdays>0?' <em>('+r.hdays+' holiday day'+(r.hdays!==1?'s':'')+' deducted)</em>':''}</td><td>${fmt(r.total)}</td></tr>`).join('')}</tbody><tfoot><tr class="gr"><td>This cycle</td><td>${fmt(bill.grandTotal)}</td></tr>${outstanding>0?`<tr class="tr"><td>Previous outstanding</td><td>${fmt(outstanding)}</td></tr><tr class="tot"><td>TOTAL TO PAY</td><td>${fmt(totalPayable)}</td></tr>`:''}</tfoot></table>`;
+    var wr=buildWeeklyRows(c,getBillingStart(c));
+    table='<table><thead><tr><th>Period</th><th>Amount</th></tr></thead><tbody>';
+    wr.forEach(function(r){table+='<tr><td>'+r.label+(r.hdays>0?' <em>('+r.hdays+' holiday day'+(r.hdays!==1?'s':'')+' deducted)</em>':'')+'</td><td>'+fmt(r.total)+'</td></tr>';});
+    table+='</tbody><tfoot><tr class="gr"><td>This cycle</td><td>'+fmt(bill.grandTotal)+'</td></tr>';
+    if(outstanding>0)table+='<tr class="tr"><td>Previous outstanding</td><td>'+fmt(outstanding)+'</td></tr><tr class="tot"><td>TOTAL TO PAY</td><td>'+fmt(totalPayable)+'</td></tr>';
+    table+='</tfoot></table>';
   } else {
-    const outstanding=c.balance<0?Math.abs(c.balance):0;
-    const totalPayable=bill.grandTotal+outstanding;
-    table=`<table><thead><tr><th>Description</th><th>Unit</th><th>Qty</th><th>Amount</th>${gst?'<th>GST</th>':''}</tr></thead><tbody>${bill.lines.map(l=>`<tr><td>${l.title}${l.freq==='monthly'?' (monthly)':l.freq==='weekly'?' (weekly)':''}</td><td>${fmt(l.unitPrice)}</td><td>${l.label}</td><td>${fmt(l.lineTotal)}</td>${gst?`<td>${l.gstAmt>0?fmt(l.gstAmt):'&mdash;'}</td>`:''}</tr>`).join('')}<tr><td><em>Delivery</em></td><td>${fmt(c.deliveryCharge)}</td><td>${Math.round(28/7)} weeks</td><td>${fmt(bill.deliveryTotal)}</td>${gst?`<td>${bill.deliveryGst>0?fmt(bill.deliveryGst):'&mdash;'}</td>`:''}</tr></tbody><tfoot><tr class="tr"><td colspan="3">Subtotal</td><td>${fmt(bill.subtotal)}</td>${gst?`<td>${fmt(bill.gstTotal)}</td>`:''}</tr>${gst?`<tr class="tr"><td colspan="4">GST @ ${gst}%</td><td>${fmt(bill.gstTotal)}</td></tr>`:''}<tr class="gr"><td colspan="${gst?4:3}">This cycle</td><td colspan="2">${fmt(bill.grandTotal)}</td></tr>${outstanding>0?`<tr class="tr"><td colspan="${gst?4:3}">Previous outstanding</td><td colspan="2">${fmt(outstanding)}</td></tr><tr class="tot"><td colspan="${gst?4:3}">TOTAL TO PAY</td><td colspan="2">${fmt(totalPayable)}</td></tr>`:''}</tfoot></table>${bill.holidayDays>0?`<div class="hol">&#127958; ${bill.holidayDays} holiday day${bill.holidayDays!==1?'s':''} deducted &mdash; ${bill.chargeDays} days charged</div>`:''}`;
+    table='<table><thead><tr><th>Description</th><th>Unit</th><th>Qty</th><th>Amount</th>'+(gst?'<th>GST</th>':'')+'</tr></thead><tbody>';
+    bill.lines.forEach(function(l){
+      table+='<tr><td>'+l.title+(l.freq==='monthly'?' (monthly)':l.freq==='weekly'?' (weekly)':'')+'</td><td>'+fmt(l.unitPrice)+'</td><td>'+l.label+'</td><td>'+fmt(l.lineTotal)+'</td>'+(gst?'<td>'+(l.gstAmt>0?fmt(l.gstAmt):'&mdash;')+'</td>':'')+'</tr>';
+    });
+    table+='<tr><td><em>Delivery</em></td><td>'+fmt(c.deliveryCharge)+'</td><td>'+Math.round(28/7)+' weeks</td><td>'+fmt(bill.deliveryTotal)+'</td>'+(gst?'<td>'+(bill.deliveryGst>0?fmt(bill.deliveryGst):'&mdash;')+'</td>':'')+'</tr>';
+    table+='</tbody><tfoot><tr class="tr"><td colspan="3">Subtotal</td><td>'+fmt(bill.subtotal)+'</td>'+(gst?'<td>'+fmt(bill.gstTotal)+'</td>':'')+'</tr>';
+    if(gst)table+='<tr class="tr"><td colspan="4">GST @ '+gst+'%</td><td>'+fmt(bill.gstTotal)+'</td></tr>';
+    table+='<tr class="gr"><td colspan="'+(gst?4:3)+'">This cycle</td><td colspan="2">'+fmt(bill.grandTotal)+'</td></tr>';
+    if(outstanding>0)table+='<tr class="tr"><td colspan="'+(gst?4:3)+'">Previous outstanding</td><td colspan="2">'+fmt(outstanding)+'</td></tr><tr class="tot"><td colspan="'+(gst?4:3)+'">TOTAL TO PAY</td><td colspan="2">'+fmt(totalPayable)+'</td></tr>';
+    table+='</tfoot></table>';
+    if(bill.holidayDays>0)table+='<div class="hol">&#127958; '+bill.holidayDays+' holiday day'+(bill.holidayDays!==1?'s':'')+' deducted &mdash; '+bill.chargeDays+' days charged</div>';
   }
-  const emailNudge=!(c.email||'').trim()?'<div class="em"><strong>Prefer email invoices?</strong><br/>Email craigpapers@icloud.com with your house name.</div>':'';
-  return `<div class="page">${hdr}${table}${pb}${emailNudge}<div class="ft">Thank you &mdash; ${biz.name||'C J Torode Newsagent'}</div></div>`;
+  var emailNudge=!(c.email||'').trim()?'<div class="em"><strong>Prefer email invoices?</strong><br/>Email craigpapers@icloud.com with your house name.</div>':'';
+  return '<div class="page">'+hdr+table+pb+emailNudge+'<div class="ft">Thank you &mdash; '+(biz.name||'C J Torode Newsagent')+'</div></div>';
 }
 
 

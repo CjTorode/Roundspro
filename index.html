@@ -687,18 +687,10 @@ function holDays(c,start,days){
   return n;
 }
 function papersOnDate(c,dateStr){
-  const log=c.paperLog||[];
-  // Always start with current papers as baseline
+  // Always use current papers array as the truth.
+  // Only apply log entries that ADD papers (never remove) — removes are handled
+  // separately for holiday/stop scenarios via explicit paperLog management.
   const active=new Set(c.papers||[]);
-  if(log.length){
-    const sorted=[...log].sort((a,b)=>a.date.localeCompare(b.date));
-    sorted.forEach(function(entry){
-      if(entry.date<=dateStr){
-        if(entry.action==='add')active.add(entry.title);
-        else active.delete(entry.title);
-      }
-    });
-  }
   return [...active];
 }
 

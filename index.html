@@ -511,7 +511,6 @@ async function startApp(){
 const IR=[];
 const IC=[];
 const IST=[
-  // Guernsey local paper — Mon-Sat
   {id:0, title:'Guernsey Press',        type:'paper',freq:'daily',deliveryDays:[1,2,3,4,5,6],costPrice:0,sellPrice:1.40,stock:0,gstApplicable:false},
   // Mon-Fri papers
   {id:1, title:'The Sun',               type:'paper',freq:'daily',deliveryDays:[1,2,3,4,5],costPrice:0,sellPrice:1.70,stock:0,gstApplicable:false},
@@ -593,131 +592,37 @@ const st={
 
 // ── HARDCODED LIST ORDER (set May 2026) ──────────────────────────
 function applyListOrder(){
-  const round1 = [
-    'HARVEY & NIKKI SMITH',    // 1
-    'MR & MRS RICHMOND',       // 2
-    'PALMA',                   // 3
-    'MR BEHAN',                // 4
-    'MR & MRS ATKIN',          // 5
-    'MR & MRS WRIGHT',         // 6
-    'MR & MRS KAINES',         // 7 (also 8 — handled by first match)
-    'MRS SAVIDENT',            // 9
-    'NORTH COTTAGE',           // 10
-    'LA FOLIE',                // 11
-    'SANTA ANNA',              // 12
-    'MRS WRIGHT',              // 13
-    'MR & MRS COHU',           // 14
-    'MOUNT LOFTY',             // 15
-    'MR & MRS LE CRAS',        // 16
-    'MR & MRS COLLAS',         // 17
-    'MR J DOMAILLE',           // 18
-    'MR & MRS DE LA RUE',      // 19
-    'MR & MRS PATTEN',         // 20
-    'MR & MRS LE CHEMINANT',   // 21
-    'THE WILLOWS',             // 22
-    'MRS MCCOLL',              // 23
-    '13 COURTIL LE CLEMENT',   // 24
-    'MR & MRS HOUCHARD',       // 25
-    'ROOM 227',                // 26
-    'D OGIER',                 // 27
-    'MR J HODKINSON',          // 28
-    'MR PARSOMS',              // 29
-    'ROOM 241',                // 30
-    'MR & MRS STEWART',        // 31
-    'ROOM 144',                // 32
-    'ROOM 145',                // 33
-    'ROOM 141',                // 34
-    'ROOM 142',                // 35
-    'ROOM 202',                // 36
-    'MR & MRS KENDALL',        // 37
-    'MR & MRS KINDER',         // 38
-    'SYARA',                   // 39
-    'MRS IRVING',              // 40
-    'MR & MRS GIRARD',         // 41
-    'MR & MRS DRAKE',          // 42
-    'TRENANCE',                // 43
-    'MRS MATHEWS',             // 44
-    'MRS LE BER',              // 45
-    'MR & MRS J TOLCHER',      // 46 (was 47)
-    'MR & MRS CREED',          // 47 (was 48)
+  const round1=[
+    'HARVEY & NIKKI SMITH','MR & MRS RICHMOND','PALMA','MR BEHAN','MR & MRS ATKIN',
+    'MR & MRS WRIGHT','MR & MRS KAINES','MRS SAVIDENT','NORTH COTTAGE','LA FOLIE',
+    'SANTA ANNA','MRS WRIGHT','MR & MRS COHU','MOUNT LOFTY','MR & MRS LE CRAS',
+    'MR & MRS COLLAS','MR J DOMAILLE','MR & MRS DE LA RUE','MR & MRS PATTEN',
+    'MR & MRS LE CHEMINANT','THE WILLOWS','MRS MCCOLL','13 COURTIL LE CLEMENT',
+    'MR & MRS HOUCHARD','ROOM 227','D OGIER','MR J HODKINSON','MR PARSOMS',
+    'ROOM 241','MR & MRS STEWART','ROOM 144','ROOM 145','ROOM 141','ROOM 142',
+    'ROOM 202','MR & MRS KENDALL','MR & MRS KINDER','SYARA','MRS IRVING',
+    'MR & MRS GIRARD','MR & MRS DRAKE','TRENANCE','MRS MATHEWS','MRS LE BER',
+    'MR & MRS J TOLCHER','MR & MRS CREED'
   ];
-  const round2 = [
-    'ST IVES',                 // 1
-    'AU SON DES CLOCHES',      // 2
-    'MR & MRS BONNEL',         // 3
-    'MR & MRS LAINE',          // 4
-    'MR & MRS BOTT',           // 5
-    'LA DAEXIEME',             // 6
-    'MR & MRS JENNER',         // 7
-    'MR & MRS LOVERIDGE',      // 8
-    'MR & MRS WARRY',          // 9
-    'DR & MRS DORIAN',         // 10
-    'MR & MRS MILLMAN',        // 11
-    '5 LANCRESSE',             // 12
-    'MR & MRS LE CRAS',        // 13
-    'MRS JONES',               // 14
-    'MR & MRS ALLAN',          // 15
-    'MR & MRS DONALDSON',      // 16
-    'LITTLE CROFT',            // 17
-    'MR & MRS RALEIGH',        // 18
-    'MR HARNDEN',              // 19
-    'THE HIDE',                // 20
-    '8 LE CLOTURE',            // 21
-    'MR & MRS ATTER',          // 22
-    'BEACH COTTAGE',           // 23
-    'THE BEACH HOUSE',         // 24
-    'POND HOUSE',              // 25
-    'MRS BESSEL',              // 26
-    'MRS SEBIRE',              // 27
-    'MELANDRA',                // 28
-    'MRS DAVISON',             // 29
-    'MR & MRS HALLETT',        // 30
-    'MR & MRS TEE',            // 31
-    'MR DOMAILLE',             // 32
-    'MR & MRS FOSS',           // 33
-    'MR & MRS STUART',         // 34
-    'MR & MRS SKATES',         // 35
-    'MR & MRS TAYLOR',         // 36
-    'MR & MRS BALL',           // 37
-    'MR BRACHE',               // 38
-    'MRS GORMAN',              // 39
-    'MR & MRS CLARK',          // 40
-    'MRS ALLISON',             // 41
-    'LES MAUX',                // 42
-    'MR & MRS SMITH',          // 43
-    'MR RANGER',               // 44
-    'MRS BURT',                // 45
-    'MRS LE FLOCK',            // 46
-    'MR ROBINSON',             // 47
-    'MR & MRS ELLIS',          // 48
-    'LE DIXIEME',              // 49
-    'MISS MARTEL',             // 50
-    'MR & MRS SUNDERLAND',     // 51
-    'MR & MRS HESSE',          // 52
-    'ROYAL GUERNSEY GOLF CLUB',// 53
-    'LANCRESSE GOLF CLUB',     // 54
-    'LA CLOTON COTTAGE',       // 55
+  const round2=[
+    'ST IVES','AU SON DES CLOCHES','MR & MRS BONNEL','MR & MRS LAINE','MR & MRS BOTT',
+    'LA DAEXIEME','MR & MRS JENNER','MR & MRS LOVERIDGE','MR & MRS WARRY','DR & MRS DORIAN',
+    'MR & MRS MILLMAN','5 LANCRESSE','MR & MRS LE CRAS','MRS JONES','MR & MRS ALLAN',
+    'MR & MRS DONALDSON','LITTLE CROFT','MR & MRS RALEIGH','MR HARNDEN','THE HIDE',
+    '8 LE CLOTURE','MR & MRS ATTER','BEACH COTTAGE','THE BEACH HOUSE','POND HOUSE',
+    'MRS BESSEL','MRS SEBIRE','MELANDRA','MRS DAVISON','MR & MRS HALLETT','MR & MRS TEE',
+    'MR DOMAILLE','MR & MRS FOSS','MR & MRS STUART','MR & MRS SKATES','MR & MRS TAYLOR',
+    'MR & MRS BALL','MR BRACHE','MRS GORMAN','MR & MRS CLARK','MRS ALLISON','LES MAUX',
+    'MR & MRS SMITH','MR RANGER','MRS BURT','MRS LE FLOCK','MR ROBINSON','MR & MRS ELLIS',
+    'LE DIXIEME','MISS MARTEL','MR & MRS SUNDERLAND','MR & MRS HESSE',
+    'ROYAL GUERNSEY GOLF CLUB','LANCRESSE GOLF CLUB','LA CLOTON COTTAGE'
   ];
-  // Build lookup maps: name -> {listOrder, roundOrder, roundId}
-  // Round 1 customers get listOrder 1-47, Round 2 get 101-155
-  // This keeps them separate when sorting "All Rounds" (R1 first, then R2)
-  const r1map = {};
-  round1.forEach((n,i) => { r1map[n.toUpperCase()] = i+1; });
-  const r2map = {};
-  round2.forEach((n,i) => { r2map[n.toUpperCase()] = i+1; });
-
-  st.customers = st.customers.map(c => {
-    const name = (c.name||'').toUpperCase();
-    // Check Round 1
-    const r1idx = r1map[name];
-    if(r1idx !== undefined){
-      return {...c, listOrder: r1idx, roundOrder: r1idx};
-    }
-    // Check Round 2
-    const r2idx = r2map[name];
-    if(r2idx !== undefined){
-      return {...c, listOrder: 100 + r2idx, roundOrder: r2idx};
-    }
+  const r1map={};round1.forEach((n,i)=>{r1map[n.toUpperCase()]=i+1;});
+  const r2map={};round2.forEach((n,i)=>{r2map[n.toUpperCase()]=i+1;});
+  st.customers=st.customers.map(c=>{
+    const name=(c.name||'').toUpperCase();
+    const r1=r1map[name];if(r1!==undefined)return{...c,listOrder:r1,roundOrder:r1};
+    const r2=r2map[name];if(r2!==undefined)return{...c,listOrder:100+r2,roundOrder:r2};
     return c;
   });
 }
@@ -932,50 +837,29 @@ function closeCycle(){
   st.showCloseCycle=false;pa();render();toast('✓ Cycle closed — next period started');
 }
 
+function doPrint(html){
+  var prev=document.getElementById('_pf');if(prev)prev.parentNode.removeChild(prev);
+  var ifr=document.createElement('iframe');
+  ifr.id='_pf';
+  ifr.style.cssText='position:fixed;top:0;left:0;width:1px;height:1px;border:none;visibility:hidden';
+  document.body.appendChild(ifr);
+  var doc=ifr.contentDocument||ifr.contentWindow.document;
+  doc.open();doc.write(html);doc.close();
+  ifr.contentWindow.addEventListener('afterprint',function(){setTimeout(function(){if(ifr.parentNode)ifr.parentNode.removeChild(ifr);},500);});
+  setTimeout(function(){ifr.contentWindow.print();},500);
+}
+
 function printAllBills(custList){
-  const pages = custList.map(c => buildInvoiceHTML(c));
-  if(!pages.length) return;
-  const css = getInvoiceCSS();
-  // Add page-break class to all but the last invoice
-  const joined = pages.map((p,i)=> i < pages.length-1 ? p.replace('<div class="page">', '<div class="page pb">') : p).join('');
-  const html = '<!DOCTYPE html><html><head><meta charset="utf-8"><style>'+css+'</style></head><body>'+joined+'</body></html>';
+  const pages=custList.map(c=>buildInvoiceHTML(c));
+  if(!pages.length)return;
+  const css=getInvoiceCSS();
+  const joined=pages.map((p,i)=>i<pages.length-1?p.replace('<div class="page">','<div class="page pb">'):p).join('');
+  const html='<!DOCTYPE html><html><head><meta charset="utf-8"><style>'+css+'</style></head><body>'+joined+'</body></html>';
   doPrint(html);
 }
 
 function getInvoiceCSS(){
-  // A5 = 148x210mm. Content width = 128mm (148 minus 10mm each side).
-  // We fix the page wrapper to exactly 128mm wide so Safari scales it
-  // correctly to fill A5 paper regardless of @page support.
-  return `*{box-sizing:border-box;margin:0;padding:0}
-html,body{font-family:Georgia,serif;font-size:11px;color:#1a1a1a;background:#fff;
-  -webkit-print-color-adjust:exact;print-color-adjust:exact}
-.page{width:128mm;min-height:188mm;padding:0;margin:0 auto;overflow:hidden}
-.pb{page-break-after:always;break-after:page}
-h1{font-size:15px;letter-spacing:1px}
-.sub{font-size:8px;letter-spacing:3px;text-transform:uppercase;color:#888}
-.hdr{border-bottom:2px solid #1a1a1a;padding-bottom:5px;margin-bottom:7px;display:flex;justify-content:space-between;align-items:flex-start}
-.biz{font-size:8px;color:#555;margin-top:3px;line-height:1.4}
-.hr{text-align:right;font-size:9px;color:#555}
-.bt{margin-bottom:6px;font-size:10px}
-table{width:100%;border-collapse:collapse;margin:5px 0;font-size:9px}
-th{background:#1a1a1a;color:#c8a84b;padding:4px 5px;text-align:left;font-size:8px}
-th:not(:first-child){text-align:right}
-td{padding:4px 5px;border-bottom:1px solid #e0d8cc}
-td:not(:first-child){text-align:right}
-.tr td{font-weight:bold;background:#f5f0e8}
-.gr td{font-weight:bold;font-size:11px;background:#1a1a1a;color:#c8a84b}
-.tot td{font-weight:bold;font-size:12px;background:#b94040;color:white}
-.pay{margin-top:5px;padding:5px 8px;background:#f5f0e8;border:1px solid #c8a84b;border-radius:3px;font-size:9px;line-height:1.5}
-.hol{margin-top:5px;padding:5px 8px;background:#eef3ff;border:1px solid #5a7ec8;border-radius:3px;font-size:9px}
-.em{margin-top:6px;padding:7px 10px;border:1px dashed #999;border-radius:3px;font-size:8px;color:#555}
-.ft{margin-top:7px;font-size:9px;font-weight:bold;border-top:2px solid #1a1a1a;padding-top:5px}
-a[href]:after{content:none!important}
-@media print{
-  @page{size:A5 portrait;margin:10mm}
-  html,body{margin:0;padding:0}
-  .page{width:100%;min-height:auto;margin:0;padding:0}
-  .pb{page-break-after:always;break-after:page}
-}`;
+  return '@page{size:A5 portrait;margin:10mm}*{box-sizing:border-box;margin:0;padding:0}html,body{font-family:Georgia,serif;font-size:11px;color:#1a1a1a;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}.page{width:128mm;min-height:188mm;padding:0;margin:0 auto}.pb{page-break-after:always;break-after:page}h1{font-size:15px;letter-spacing:1px}.sub{font-size:8px;letter-spacing:3px;text-transform:uppercase;color:#888}.hdr{border-bottom:2px solid #1a1a1a;padding-bottom:5px;margin-bottom:7px;display:flex;justify-content:space-between;align-items:flex-start}.biz{font-size:8px;color:#555;margin-top:3px;line-height:1.4}.hr{text-align:right;font-size:9px;color:#555}.bt{margin-bottom:6px;font-size:10px}table{width:100%;border-collapse:collapse;margin:5px 0;font-size:9px}th{background:#1a1a1a;color:#c8a84b;padding:4px 5px;text-align:left;font-size:8px}th:not(:first-child){text-align:right}td{padding:4px 5px;border-bottom:1px solid #e0d8cc}td:not(:first-child){text-align:right}.tr td{font-weight:bold;background:#f5f0e8}.gr td{font-weight:bold;font-size:11px;background:#1a1a1a;color:#c8a84b}.tot td{font-weight:bold;font-size:12px;background:#b94040;color:white}.pay{margin-top:5px;padding:5px 8px;background:#f5f0e8;border:1px solid #c8a84b;border-radius:3px;font-size:9px}.hol{margin-top:5px;padding:5px 8px;background:#eef3ff;border:1px solid #5a7ec8;border-radius:3px;font-size:9px}.em{margin-top:6px;padding:7px 10px;border:1px dashed #999;border-radius:3px;font-size:8px;color:#555}.ft{margin-top:7px;font-size:9px;font-weight:bold;border-top:2px solid #1a1a1a;padding-top:5px}a[href]:after{content:none!important}@media print{@page{size:A5 portrait;margin:10mm}.page{width:100%;margin:0}}';
 }
 
 function buildInvoiceHTML(c){
@@ -983,50 +867,22 @@ function buildInvoiceHTML(c){
   const biz=st.bizDetails;const gst=st.gstEnabled?st.gstRate:0;
   const td=new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});
   const bi=[biz.address,biz.phone?'Tel: '+biz.phone:'',biz.email?'Email: '+biz.email:''].filter(Boolean).join('<br/>');
-  const pb=biz.paymentInfo?`<div class="pay"><strong>Payment Details:</strong><br/>${biz.paymentInfo.replace(/\n/g,'<br/>')}</div>`:'';
-  const hdr=`<div class="hdr"><div><h1>🗞 ${biz.name||'C J TORODE'}</h1><div class="sub">Customer Invoice</div><div class="biz">${bi}</div></div>
-<div class="hr"><strong>Date:</strong> ${td}<br/><strong>Period:</strong> ${getBillingPeriod(c)||'4-week cycle'}${gst&&st.gstNumber?'<br/><strong>GST:</strong> '+st.gstNumber:''}${c.gstExempt?'<br/><em>GST Exempt</em>':''}</div></div>
-<div class="bt"><strong>Bill To:</strong><br/>${c.name}<br/>${c.address}${c.phone?'<br/>'+c.phone:''}</div>`;
+  const pb=biz.paymentInfo?`<div class="pay"><strong>Payment Details:</strong><br/>${biz.paymentInfo.replace(/
+/g,'<br/>')}</div>`:'';
+  const hdr=`<div class="hdr"><div><h1>&#128240; ${biz.name||'C J TORODE'}</h1><div class="sub">Customer Invoice</div><div class="biz">${bi}</div></div><div class="hr"><strong>Date:</strong> ${td}<br/><strong>Period:</strong> ${getBillingPeriod(c)||'4-week cycle'}${c.gstExempt?'<br/><em>GST Exempt</em>':''}</div></div><div class="bt"><strong>Bill To:</strong><br/>${c.name}<br/>${c.address}${c.phone?'<br/>'+c.phone:''}</div>`;
   let table='';
   if(st.billStyle==='weekly'){
     const wr=buildWeeklyRows(c,getBillingStart(c));
     const outstanding=c.balance<0?Math.abs(c.balance):0;
     const totalPayable=bill.grandTotal+outstanding;
-    table=`<table><thead><tr><th>Period</th><th>Amount</th></tr></thead><tbody>
-${wr.map(r=>`<tr><td>${r.label}${r.hdays>0?' <em>('+r.hdays+' holiday day'+(r.hdays!==1?'s':'')+' deducted)</em>':''}</td><td>${fmt(r.total)}</td></tr>`).join('')}
-</tbody><tfoot><tr class="gr"><td>This cycle</td><td>${fmt(bill.grandTotal)}</td></tr>
-${outstanding>0?`<tr class="tr"><td>Previous outstanding</td><td>${fmt(outstanding)}</td></tr><tr class="tot"><td>TOTAL TO PAY</td><td>${fmt(totalPayable)}</td></tr>`:''}</tfoot></table>`;
+    table=`<table><thead><tr><th>Period</th><th>Amount</th></tr></thead><tbody>${wr.map(r=>`<tr><td>${r.label}${r.hdays>0?' <em>('+r.hdays+' holiday day'+(r.hdays!==1?'s':'')+' deducted)</em>':''}</td><td>${fmt(r.total)}</td></tr>`).join('')}</tbody><tfoot><tr class="gr"><td>This cycle</td><td>${fmt(bill.grandTotal)}</td></tr>${outstanding>0?`<tr class="tr"><td>Previous outstanding</td><td>${fmt(outstanding)}</td></tr><tr class="tot"><td>TOTAL TO PAY</td><td>${fmt(totalPayable)}</td></tr>`:''}</tfoot></table>`;
   } else {
     const outstanding=c.balance<0?Math.abs(c.balance):0;
     const totalPayable=bill.grandTotal+outstanding;
-    table=`<table><thead><tr><th>Description</th><th>Unit</th><th>Qty</th><th>Amount</th>${gst?'<th>GST</th>':''}</tr></thead>
-<tbody>${bill.lines.map(l=>`<tr><td>${l.title}${l.freq==='monthly'?' (monthly)':l.freq==='weekly'?' (weekly)':''}</td><td>${fmt(l.unitPrice)}</td><td>${l.label}</td><td>${fmt(l.lineTotal)}</td>${gst?`<td>${l.gstAmt>0?fmt(l.gstAmt):'—'}</td>`:''}</tr>`).join('')}
-<tr><td><em>Delivery</em></td><td>${fmt(c.deliveryCharge)}</td><td>${Math.round(28/7)} weeks</td><td>${fmt(bill.deliveryTotal)}</td>${gst?`<td>${bill.deliveryGst>0?fmt(bill.deliveryGst):'—'}</td>`:''}</tr></tbody>
-<tfoot><tr class="tr"><td colspan="3">Subtotal</td><td>${fmt(bill.subtotal)}</td>${gst?`<td>${fmt(bill.gstTotal)}</td>`:''}</tr>
-${gst?`<tr class="tr"><td colspan="4">GST @ ${gst}%</td><td>${fmt(bill.gstTotal)}</td></tr>`:''}
-<tr class="gr"><td colspan="${gst?4:3}">This cycle</td><td colspan="2">${fmt(bill.grandTotal)}</td></tr>
-${outstanding>0?`<tr class="tr"><td colspan="${gst?4:3}">Previous outstanding</td><td colspan="2">${fmt(outstanding)}</td></tr><tr class="tot"><td colspan="${gst?4:3}">TOTAL TO PAY</td><td colspan="2">${fmt(totalPayable)}</td></tr>`:''}</tfoot></table>
-${bill.holidayDays>0?`<div class="hol">🏖 ${bill.holidayDays} holiday day${bill.holidayDays!==1?'s':''} deducted — ${bill.chargeDays} days charged</div>`:''}
-${bill.anyPriceChange?`<div class="hol">💰 Price change applied mid-cycle — amounts calculated per day at correct rate</div>`:''}`;
+    table=`<table><thead><tr><th>Description</th><th>Unit</th><th>Qty</th><th>Amount</th>${gst?'<th>GST</th>':''}</tr></thead><tbody>${bill.lines.map(l=>`<tr><td>${l.title}${l.freq==='monthly'?' (monthly)':l.freq==='weekly'?' (weekly)':''}</td><td>${fmt(l.unitPrice)}</td><td>${l.label}</td><td>${fmt(l.lineTotal)}</td>${gst?`<td>${l.gstAmt>0?fmt(l.gstAmt):'&mdash;'}</td>`:''}</tr>`).join('')}<tr><td><em>Delivery</em></td><td>${fmt(c.deliveryCharge)}</td><td>${Math.round(28/7)} weeks</td><td>${fmt(bill.deliveryTotal)}</td>${gst?`<td>${bill.deliveryGst>0?fmt(bill.deliveryGst):'&mdash;'}</td>`:''}</tr></tbody><tfoot><tr class="tr"><td colspan="3">Subtotal</td><td>${fmt(bill.subtotal)}</td>${gst?`<td>${fmt(bill.gstTotal)}</td>`:''}</tr>${gst?`<tr class="tr"><td colspan="4">GST @ ${gst}%</td><td>${fmt(bill.gstTotal)}</td></tr>`:''}<tr class="gr"><td colspan="${gst?4:3}">This cycle</td><td colspan="2">${fmt(bill.grandTotal)}</td></tr>${outstanding>0?`<tr class="tr"><td colspan="${gst?4:3}">Previous outstanding</td><td colspan="2">${fmt(outstanding)}</td></tr><tr class="tot"><td colspan="${gst?4:3}">TOTAL TO PAY</td><td colspan="2">${fmt(totalPayable)}</td></tr>`:''}</tfoot></table>${bill.holidayDays>0?`<div class="hol">&#127958; ${bill.holidayDays} holiday day${bill.holidayDays!==1?'s':''} deducted &mdash; ${bill.chargeDays} days charged</div>`:''}`;
   }
-  const emailNudge = !(c.email||'').trim() ? `<div class="em"><strong>📧 Prefer to receive your invoice by email?</strong><br/>Email us at craigpapers@icloud.com with your house name and we will switch you to email billing.</div>` : '';
-  return `<div class="page">${hdr}${table}${pb}${emailNudge}<div class="ft">Thank you — ${biz.name||'C J Torode Newsagent'}</div></div>`;
-}
-
-function doPrint(html){
-  var prev = document.getElementById('_pf');
-  if(prev) prev.parentNode.removeChild(prev);
-  var ifr = document.createElement('iframe');
-  ifr.id = '_pf';
-  ifr.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;border:none;visibility:hidden';
-  document.body.appendChild(ifr);
-  var doc = ifr.contentDocument || ifr.contentWindow.document;
-  doc.open(); doc.write(html); doc.close();
-  // Use afterprint to clean up, focus main window after dismiss
-  ifr.contentWindow.addEventListener('afterprint', function(){
-    setTimeout(function(){ if(ifr.parentNode) ifr.parentNode.removeChild(ifr); }, 500);
-  });
-  setTimeout(function(){ ifr.contentWindow.print(); }, 500);
+  const emailNudge=!(c.email||'').trim()?'<div class="em"><strong>Prefer email invoices?</strong><br/>Email craigpapers@icloud.com with your house name.</div>':'';
+  return `<div class="page">${hdr}${table}${pb}${emailNudge}<div class="ft">Thank you &mdash; ${biz.name||'C J Torode Newsagent'}</div></div>`;
 }
 
 
@@ -1044,7 +900,7 @@ function buildWeeklyRows(c,start){
 function printBill(cid){
   const c=st.customers.find(x=>x.id===cid);if(!c)return;
   const css=getInvoiceCSS();
-  const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Invoice</title><style>${css}</style></head><body>${buildInvoiceHTML(c)}</body></html>`;
+  const html='<!DOCTYPE html><html><head><meta charset="utf-8"><style>'+css+'</style></head><body>'+buildInvoiceHTML(c)+'</body></html>';
   doPrint(html);
 }
 
@@ -1094,8 +950,8 @@ function emailBill(cid){
 
 function emailAllBills(custList){
   const allCusts = custList || (isDriver()?st.customers.filter(c=>c.roundId==='round-2'):st.customers);
-  const withEmail=allCusts.filter(c=>(c.email||'').trim());
-  const without=allCusts.filter(c=>!(c.email||'').trim());
+  const withEmail=allCusts.filter(c=>c.email);
+  const without=allCusts.filter(c=>!c.email);
   if(!withEmail.length){alert('No customers have email addresses on file.');return;}
   const msg='Send bills to '+withEmail.length+' customer'+(withEmail.length!==1?'s':'')+' with email addresses?'+(without.length?'\n\nNo email on file for:\n'+without.map(c=>c.name).join('\n'):'');
   if(!confirm(msg))return;
@@ -1123,8 +979,6 @@ td{padding:7px 8px;border-bottom:1px solid #e0d8cc;vertical-align:top;font-size:
 <div class="hdr"><div><h1>🗞 ${biz.name||'C J TORODE'} — Delivery Sheet</h1><h2>${r.name} · ${r.area}</h2></div><div class="date">${td}</div></div>
 <table><thead><tr><th>#</th><th>Customer</th><th>Papers &amp; Magazines</th><th>✓</th></tr></thead><tbody>${rows}</tbody></table>
 <div class="ft">Total stops: ${custs.length} · ${biz.name||'C J Torode Newsagent'}${biz.phone?' · '+biz.phone:''}</div></body></html>`;
-  // Add self-print script
-  html = html.replace('</body></html>', '</body></html>');
   doPrint(html);
 }
 
@@ -1442,11 +1296,10 @@ function rBilling(){
   const over=tod()>ces;
   const dl=Math.ceil((ce-new Date())/86400000);
 
-  // Shared helper to get filtered customer list — sorted by round/list order
+  // Shared helper to get filtered customer list — sorted by delivery order
   function getBillingCusts(){
     const allC = isDriver()?st.customers.filter(c=>c.roundId==='round-2'):st.customers;
-    const filtered = (st.billingRoundFilter&&st.billingRoundFilter!=='all') ? allC.filter(c=>c.roundId===st.billingRoundFilter) : allC;
-    // Sort by listOrder — this is the master delivery order set in applyListOrder()
+    const filtered=(st.billingRoundFilter&&st.billingRoundFilter!=='all')?allC.filter(c=>c.roundId===st.billingRoundFilter):allC;
     return [...filtered].sort((a,b)=>(a.listOrder||0)-(b.listOrder||0));
   }
 
@@ -1474,7 +1327,7 @@ function rBilling(){
         }),
         btn('b4',{style:{padding:'7px 16px',fontSize:'13px'}},'📧 Email ALL',()=>{
           const custs = getBillingCusts();
-          const toEmail = custs.filter(c=>(c.email||'').trim());
+          const toEmail = custs.filter(c=>c.email);
           if(!toEmail.length){alert('No customers with email addresses in this selection.');return;}
           emailAllBills(toEmail);
         })
@@ -1483,8 +1336,8 @@ function rBilling(){
     h('div',{style:{fontSize:'12px',color:'#888',marginTop:'8px'}},
       (()=>{
         const custs = getBillingCusts();
-        const noEmail = custs.filter(c=>!(c.email||'').trim()).length;
-        const hasEmail = custs.filter(c=>(c.email||'').trim()).length;
+        const noEmail = custs.filter(c=>!c.email).length;
+        const hasEmail = custs.filter(c=>c.email).length;
         const roundName = (st.billingRoundFilter&&st.billingRoundFilter!=='all') ? (st.rounds.find(r=>r.id===st.billingRoundFilter)||{name:'Selected'}).name : 'All Rounds';
         return roundName+': 🖨 '+noEmail+' to print · 📧 '+hasEmail+' to email · Total: '+fmt(getBillingCusts().reduce((s,c)=>s+calcBill(c,getBillingStart(c),28).grandTotal,0));
       })()
@@ -1565,9 +1418,8 @@ function rBilling(){
             btn('b1',{style:{flex:'1'}},'🖨 Print Bills (no email)',()=>{
               const allC = isDriver()?st.customers.filter(c=>c.roundId==='round-2'):st.customers;
               const roundFiltered = (st.billingRoundFilter&&st.billingRoundFilter!=='all') ? allC.filter(c=>c.roundId===st.billingRoundFilter) : allC;
-              const sorted = [...roundFiltered].sort((a,b)=>(a.listOrder||0)-(b.listOrder||0));
-              const toPrint = sorted.filter(function(c){return !(c.email||'').trim();});
-              const skipped = sorted.filter(function(c){return (c.email||'').trim();});
+              const toPrint = roundFiltered.filter(function(c){return !c.email;});
+              const skipped = roundFiltered.filter(function(c){return c.email;});
               if(!toPrint.length){alert('Nothing to print in this selection.\n\nAll customers have email addresses — use "📧 Email ALL Bills" instead.');return;}
               printAllBills(toPrint);
               if(skipped.length)toast('🖨 Printing '+toPrint.length+' bill'+(toPrint.length!==1?'s':'')+' · Skipped '+skipped.length+' (have email)');
@@ -2130,31 +1982,8 @@ function rModals(){
       h('label',{style:{display:'flex',alignItems:'center',gap:'8px',marginBottom:'14px',fontSize:'13px'}},
         h('input',{type:'checkbox',checked:ec.gstExempt||false,onchange:e=>st.showEditCustomer.gstExempt=e.target.checked}),'GST Exempt'
       ),
-      h('div',{style:{marginBottom:'10px'}},
-        btn('b3 bf','🗑 Reset Paper History (use current papers list)',()=>{
-          if(confirm('This will clear the paper change history and use only the current ticked papers for billing. Continue?')){
-            const today = tod();
-            // Write a fresh log: remove all, then add current papers as of today
-            const freshLog = (ec.papers||[]).map(p=>({title:p,action:'add',date:today}));
-            st.showEditCustomer = {...ec, paperLog: freshLog};
-            render();
-            toast('Paper history reset — save to confirm');
-          }
-        })
-      ),
       btn('b1 bf','Save Changes',()=>{
-        // Update paperLog to reflect any paper changes made in edit
-        const original = st.customers.find(cu=>cu.id===ec.id);
-        const oldPapers = original ? (original.papers||[]) : [];
-        const newPapers = ec.papers||[];
-        const today = tod();
-        let log = [...(ec.paperLog||[])];
-        // Papers removed — add a "remove" log entry today
-        oldPapers.forEach(p=>{ if(!newPapers.includes(p)) log.push({title:p,action:'remove',date:today}); });
-        // Papers added — add an "add" log entry today
-        newPapers.forEach(p=>{ if(!oldPapers.includes(p)) log.push({title:p,action:'add',date:today}); });
-        const updated = {...ec, paperLog:log};
-        st.customers=st.customers.map(cu=>cu.id===ec.id?updated:cu);
+        st.customers=st.customers.map(cu=>cu.id===ec.id?{...ec}:cu);
         ps('customers');st.showEditCustomer=null;render();toast('✓ '+ec.name+' updated');
       })
     ),()=>{st.showEditCustomer=null;render();}));
@@ -2265,63 +2094,6 @@ function rModals(){
           ps('stock');render();toast('✓ Added '+toAdd.length+' new title'+(toAdd.length!==1?'s':''));
         }),
         h('div',{style:{fontSize:'12px',color:'#888',marginBottom:'16px'}},'Only adds titles not already in your list — nothing is changed or removed.'),
-        btn('b5 bf',{style:{marginBottom:'4px'}},'🔧 Fix Zero Prices from Defaults',async ()=>{
-          const fixed=[];
-          st.stock=st.stock.map(function(s){
-            if(s.sellPrice>0) return s;
-            const def=IST.find(function(d){return d.title.toLowerCase()===s.title.toLowerCase();});
-            if(def&&def.sellPrice>0){fixed.push(s.title+' → £'+def.sellPrice.toFixed(2));return{...s,sellPrice:def.sellPrice};}
-            return s;
-          });
-          if(!fixed.length){alert('No zero prices found that match defaults — nothing changed.');return;}
-          ps('stock');
-          render();
-          toast('✓ Fixed '+fixed.length+' price'+(fixed.length!==1?'s':'')+': '+fixed.slice(0,3).join(', ')+(fixed.length>3?' + more':''));
-        }),
-        h('div',{style:{fontSize:'12px',color:'#888',marginBottom:'16px'}},'Restores sell prices from built-in defaults for any stock item showing £0.00. Only fixes items that exist in the defaults list.'),
-        btn('b5 bf',{style:{marginBottom:'4px'}},'🔧 Fix Duplicate "The Guernsey Press"',async ()=>{
-          // Rename "The Guernsey Press" -> "Guernsey Press" in all customer paper lists
-          const OLD='The Guernsey Press'; const NEW='Guernsey Press';
-          let custFixed=0;
-          st.customers=st.customers.map(c=>{
-            const hasDup=c.papers&&c.papers.includes(OLD);
-            if(!hasDup) return c;
-            // Replace old name with new in papers
-            const newPapers=[...new Set(c.papers.map(p=>p===OLD?NEW:p))];
-            // Add remove/add log entries
-            const today=tod();
-            const newLog=[...(c.paperLog||[]),
-              {title:OLD,action:'remove',date:today},
-              ...(c.papers.includes(NEW)?[]:[{title:NEW,action:'add',date:today}])
-            ];
-            custFixed++;
-            return {...c,papers:newPapers,paperLog:newLog};
-          });
-          // Remove the "The Guernsey Press" stock item
-          const before=st.stock.length;
-          st.stock=st.stock.filter(s=>s.title!==OLD);
-          const stockRemoved=before-st.stock.length;
-          if(custFixed||stockRemoved){
-            ps('customers');ps('stock');render();
-            toast('✓ Fixed '+custFixed+' customer'+(custFixed!==1?'s':'')+', removed '+stockRemoved+' duplicate stock item');
-          } else {
-            alert('No duplicate found — nothing changed.');
-          }
-        }),
-        h('div',{style:{fontSize:'12px',color:'#888',marginBottom:'16px'}},'Merges "The Guernsey Press" into "Guernsey Press" across all customer records and removes the duplicate stock entry.'),
-        btn('b5 bf',{style:{marginBottom:'4px'}},'🔧 Reset ALL Customer Paper Histories',async ()=>{
-          if(!confirm('This will reset the paper history for ALL customers to their current ticked papers as of today. Billing will use current papers for the whole cycle. Continue?')) return;
-          const today = tod();
-          st.customers = st.customers.map(c => {
-            const cycleStart = (c.roundId===st.rounds.find(r=>r.name&&r.name.includes('2'))||{id:null}).id ? st.billingStart2 : st.billingStart;
-            const freshLog = (c.papers||[]).map(p=>({title:p, action:'add', date:cycleStart||st.billingStart}));
-            return {...c, paperLog: freshLog};
-          });
-          ps('customers');
-          render();
-          toast('✓ Reset paper history for '+st.customers.length+' customers');
-        }),
-        h('div',{style:{fontSize:'12px',color:'#888',marginBottom:'16px'}},'Resets every customer paper history to current papers from billing cycle start. Use after a data migration.'),
         h('div',{className:'sd'},'☁ Supabase Connection'),
         getSB()
           ? h('div',{},
@@ -2960,8 +2732,7 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
       // ── ACTIONS ───────────────────────────────────────────────────
       h('div',{style:{display:'flex',gap:'10px',flexWrap:'wrap',marginBottom:'40px'}},
         h('button',{className:'btn b5',onclick:()=>{
-          let html = shopInvoiceHTML(wk, biz);
-          html = html.replace('</body></html>', '</body></html>');
+          const html = shopInvoiceHTML(wk, biz);
           doPrint(html);
         }},'🖨 Print Invoice'),
         h('button',{className:'btn b4',onclick:()=>{
@@ -3067,8 +2838,7 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
               h('div',{style:{display:'flex',gap:'8px'}},
                 h('button',{className:'btn b2',onclick:()=>{st.shopEditWeek=wk.id;render();}}, '✏ Edit'),
                 h('button',{className:'btn b4',onclick:()=>{
-                  let html = shopInvoiceHTML(wk, biz);
-                  html = html.replace('</body></html>', '</body></html>');
+                  const html = shopInvoiceHTML(wk, biz);
                   doPrint(html);
                 }}, '🖨 Print'),
                 h('button',{className:'btn b3',style:{color:'#b94040'},onclick:()=>{

@@ -407,17 +407,24 @@ const DB = {
       }
       // Load shop weeks from Supabase
       if(shopWks && shopWks.length){
-        st.shopWeeks = shopWks.map(r => ({
-          id: r.id,
-          weekStart: r.week_start || '',
-          weekEnd: r.week_end || '',
-          invoiceNum: r.invoice_num || '',
-          papers: r.papers || [],
-          mags: r.mags || [],
-          overdue: r.overdue || 0,
-          vouchers: r.vouchers || 0,
-          note: r.note || '',
-        }));
+        st.shopWeeks = shopWks.map(r => {
+          // papers/mags may come back as a string if Supabase column is text not jsonb
+          let papers = r.papers || [];
+          let mags = r.mags || [];
+          if(typeof papers === 'string'){ try{ papers = JSON.parse(papers); }catch(e){ papers = []; } }
+          if(typeof mags === 'string'){ try{ mags = JSON.parse(mags); }catch(e){ mags = []; } }
+          return {
+            id: r.id,
+            weekStart: r.week_start || '',
+            weekEnd: r.week_end || '',
+            invoiceNum: r.invoice_num || '',
+            papers,
+            mags,
+            overdue: r.overdue || 0,
+            vouchers: r.vouchers || 0,
+            note: r.note || '',
+          };
+        });
         // Sort newest first
         st.shopWeeks.sort((a,b) => (b.weekEnd||'').localeCompare(a.weekEnd||''));
         S.set('shopWeeks', st.shopWeeks);
@@ -2693,17 +2700,26 @@ PAPERS (top section):
   The page heading shows the day (e.g. "Tues 26 May" = tue, "Wed 27 May" = wed)
   All quantities on that page are for that single day.
 
-MAGAZINES (lower section):
-  Format: TITLE  [del qty] — [del price]  [circled ret qty]  [circled ret price]
-  - Number BEFORE the dash = delivery quantity
-  - Number AFTER the dash = delivery price this week (e.g. 1.45, 2.99, 3.50)
-  - CIRCLED number = returns quantity
-  - CIRCLED price beside it = returns credit price (last week's rate, CAN differ from del price)
-  - No circled number = zero returns
-  - Examples:
-      "Chat  3  7 — 1.45"           → del_qty=3, del_price=1.45, ret_qty=0
-      "W Weekly  7 — 2.55  (2)(1.99)" → del_qty=7, del_price=2.55, ret_qty=2, ret_price=1.99
-      "TV Choice  46 — .85"          → del_qty=46, del_price=0.85, ret_qty=0
+MAGAZINES (lower section, below the papers):
+  Craig's magazine format has these columns left to right:
+  TITLE  [circled ret qty]  [del qty] — [del price]
+
+  - The TITLE is on the left
+  - A CIRCLED number in the middle = returns quantity from LAST week
+  - Then: del_qty — del_price (e.g. "6 — 270" means del_qty=6, del_price=2.70)
+  - Prices are written without decimal points: 270 = 2.70, 245 = 2.45, 190 = 1.90, 750 = 7.50, 1099 = 10.99
+  - If no circled number, ret_qty = 0
+  - The circled numbers are stacked vertically and belong to the magazine on the SAME ROW
+
+  Examples from Craig's actual sheets:
+    "P.Friend  (4)  6 — 270"  → title=Peoples Friend, ret_qty=4, del_qty=6, del_price=2.70
+    "Woman     (7)  4 — 245"  → title=Woman, ret_qty=7, del_qty=4, del_price=2.45
+    "W.Own     (1)  6 — 190"  → title=Womans Own, ret_qty=1, del_qty=6, del_price=1.90
+    "Pls Multipack  4 — 750"  → title=FIFA Multipack, ret_qty=0, del_qty=4, del_price=7.50
+    "FIFA Tins      5 — 1099" → title=FIFA Tins, ret_qty=0, del_qty=5, del_price=10.99
+
+  CRITICAL: The circled numbers are stacked together in one column — match each one
+  to the magazine title on the SAME horizontal line, not the nearest title.
 
 ════════════════════════════════
 OUTPUT FORMAT
@@ -2780,7 +2796,7 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
             toast('✓ Scan complete — syncing to cloud…');
             await DB.saveShopWeeks();
             render();
-            toast('✓ Scan complete — saved to cloud');
+            toast('✓ Saved to cloud — other devices will update within 15 seconds');
           } catch(err) {
             if(toastEl) toastEl.style.display='none';
             toast('⚠ Scan failed: ' + err.message);

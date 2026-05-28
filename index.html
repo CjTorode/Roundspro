@@ -2704,6 +2704,8 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
             const text = (data.content||[]).filter(x=>x.type==='text').map(x=>x.text).join('');
             const clean = text.replace(/```json|```/g,'').trim();
             const parsed = JSON.parse(clean);
+            // DEBUG — remove once working
+            alert('Scan returned:\n' + JSON.stringify(parsed, null, 2).slice(0, 800));
 
             // Fuzzy title match — strips punctuation/spaces for comparison
             function fuzzyMatch(a, b){

@@ -2398,7 +2398,8 @@ const SHOP_DAILY = [
   {title:'Guernsey Press', weekPrice:1.40, satPrice:1.40, sunPrice:0},
 ];
 const SHOP_MAGS_DEFAULT = [
-  'Bella','Best','Chat','Closer','Good Food','Heat','Hello!','Inside Soap',
+  'Bella','Best','Chat','Closer','FIFA Classic Tins','FIFA Multipack','FIFA Starter Packs',
+  'FIFA Stickers','FIFA Tins','Good Food','Heat','Hello!','Inside Soap',
   'Love It!','Motor Cycle News','My Weekly','Peoples Friend','Radio Times',
   'Real People','TAB Mini Arrowords Collection','Take A Break',
   "That's Life Weekly",'Total TV Guide','TV & Streaming Weekly',
@@ -2652,21 +2653,45 @@ Magazines are listed BELOW the papers. Match these to full titles:
   Woman / Wonan / Wom                  → Woman
   W Own / Womans Own / W Owm           → Womans Own
   W Weekly / W Wekly / W Wkly / WW     → Womans Weekly
-  Yours / Yous / Yrs                   → Yours
+  Fifa Multipack / FIFA Multipack / Pls Multipack → FIFA Multipack
+  Fifa Tins / FIFA Tins                           → FIFA Tins
+  Fifa Starter / FIFA Starter / Starter Pack      → FIFA Starter Packs
+  Fifa Stickers / FIFA Stickers / Stickers        → FIFA Stickers
+  Fifa Classic / FIFA Classic / Classic Tins      → FIFA Classic Tins
 
 ════════════════════════════════
 READING THE NUMBERS
 ════════════════════════════════
 
 PAPERS (top section):
-  Format: TITLE  [del qty]  [ret qty]
-  - First number = delivery quantity
-  - Second number (if present) = returns quantity
-  - Returns are written as a CIRCLED number to the right of the delivery quantity
-  - A circled number next to a paper title is ALWAYS the returns quantity
-  - Do NOT return null for returns if there is ANY circled number next to that title
-  - The page heading shows the day (e.g. "Monday 25 May" = mon, "Thurs 14 May" = thu)
-  - All quantities on that page are for that single day
+  Craig's format has TWO columns:
+  - LEFT column = delivery quantities, written immediately next to each title
+  - RIGHT column = returns quantities, written further to the right, stacked vertically
+  
+  The returns column is SEPARATE from the titles — it is a vertical list of numbers
+  aligned to the right side of the page, corresponding to papers that have returns.
+  Papers with no returns simply have no number in the right column for that row.
+  
+  On some days returns may be plain numbers (not circled).
+  On other days some returns may be circled — treat circled and uncircled the same way.
+  
+  To match returns to titles: count down the papers list and match each return number
+  to the paper on the same horizontal row.
+  
+  Example — if the page shows:
+    Mirr   7        6
+    Mail   14       4
+    Sun    7
+    Exp    7
+    Star   10       4
+    Times  1
+    The i  1
+    GP     114      50
+  Then: Mirr del=7 ret=6, Mail del=14 ret=4, Sun del=7 ret=0, Exp del=7 ret=0,
+        Star del=10 ret=4, Times del=1 ret=0, The i del=1 ret=0, GP del=114 ret=50
+  
+  The page heading shows the day (e.g. "Tues 26 May" = tue, "Wed 27 May" = wed)
+  All quantities on that page are for that single day.
 
 MAGAZINES (lower section):
   Format: TITLE  [del qty] — [del price]  [circled ret qty]  [circled ret price]

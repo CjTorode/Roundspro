@@ -509,7 +509,6 @@ async function startApp(){
   // Auto-sync every 60 seconds (silent)
   setInterval(async () => {
     if(getSB()){
-      DB._silent = true;
       await DB.load();
     }
   }, 15000);
@@ -2782,17 +2781,21 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
               });
             }
 
-            // Merge magazines — del_qty/del_price/ret_qty/ret_price (circled = ret)
+            // Merge magazines — only update magazines that have BOTH del_qty AND del_price
+            // This prevents paper return numbers bleeding into magazine rows
+            const knownMagTitles = wk.mags.map(m => m.title);
             if(parsed.mags){
               parsed.mags.forEach(sm => {
-                // Sanity check — if no del_qty and no del_price, skip entirely
-                // This filters out paper return numbers that bleed into the magazine section
                 const hasDelivery = sm.del_qty != null && sm.del_qty > 0;
                 const hasPrice = sm.del_price != null && sm.del_price > 0;
-                if(!hasDelivery && !hasPrice) return;
+                // Must have BOTH delivery qty AND price to be a valid magazine entry
+                if(!hasDelivery || !hasPrice) return;
+                // Only match against known magazine titles — don't auto-add unknowns
+                // unless they look like FIFA products
                 let wm = wk.mags.find(m => fuzzyMatch(m.title, sm.title));
                 if(!wm){
-                  // Auto-add any title the scan found that isn't in the list yet
+                  const isFifa = (sm.title||'').toLowerCase().includes('fifa');
+                  if(!isFifa) return; // skip unknown non-FIFA titles
                   wm = {title: sm.title, delQty:'', delPrice:'', retQty:'', retPrice:''};
                   wk.mags.push(wm);
                 }
@@ -2807,10 +2810,14 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
 
             save();
             if(toastEl) toastEl.style.display='none';
-            toast('✓ Scan complete — syncing to cloud…');
-            await DB.saveShopWeeks();
+            toast('✓ Scan complete — saving to cloud…');
+            try {
+              await DB.saveShopWeeks();
+              toast('✓ Saved — other devices will update within 15 seconds');
+            } catch(e) {
+              toast('⚠ Cloud save failed: ' + e.message);
+            }
             render();
-            toast('✓ Saved to cloud — other devices will update within 15 seconds');
           } catch(err) {
             if(toastEl) toastEl.style.display='none';
             toast('⚠ Scan failed: ' + err.message);

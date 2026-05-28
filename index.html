@@ -1068,6 +1068,10 @@ function buildHTMLEmail(c, startOverride, daysOverride){
     <div style="margin-top:16px;font-size:12px;color:#888;font-family:Georgia,serif;border-top:1px solid #e8e0d0;padding-top:10px;text-align:center">
       Thank you for your custom — ${biz.name||'C J Torode Newsagent'}
     </div>
+    <div style="margin-top:10px;padding:10px 14px;background:#f5f0e8;border-radius:4px;font-size:12px;font-family:Georgia,serif;color:#666;text-align:center">
+      📧 Invoices are now sent from <strong>craigpapers@newsagentdelivr.com</strong> — please add to your contacts.<br>
+      To get in touch as usual, email <strong>Craigpapers@icloud.com</strong>
+    </div>
   </td></tr>
 </table>
 </td></tr></table>
@@ -1094,7 +1098,7 @@ async function sendBillViaSendGrid(c, startOverride, daysOverride){
       subject:  subject,
       html:     html,
       text:     text,
-      from:     biz.email || 'Craigpapers@icloud.com',
+      from:     'craigpapers@newsagentdelivr.com',
       fromName: biz.name  || 'C J Torode Newsagent'
     })
   });
@@ -3033,7 +3037,7 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
             const resp2 = await fetch('/.netlify/functions/send-email',{
               method:'POST',
               headers:{'Content-Type':'application/json'},
-              body:JSON.stringify({to:toEmail,subject,html:html2,text:text2,from:biz2.email||'Craigpapers@icloud.com',fromName:biz2.name||'C J Torode Newsagent'})
+              body:JSON.stringify({to:toEmail,subject,html:html2,text:text2,from:'craigpapers@newsagentdelivr.com',fromName:biz2.name||'C J Torode Newsagent'})
             });
             const d2 = await resp2.json().catch(()=>({error:'No response'}));
             if(!resp2.ok) throw new Error(d2.error||'Send failed');

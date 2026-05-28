@@ -2785,6 +2785,11 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
             // Merge magazines — del_qty/del_price/ret_qty/ret_price (circled = ret)
             if(parsed.mags){
               parsed.mags.forEach(sm => {
+                // Sanity check — if no del_qty and no del_price, skip entirely
+                // This filters out paper return numbers that bleed into the magazine section
+                const hasDelivery = sm.del_qty != null && sm.del_qty > 0;
+                const hasPrice = sm.del_price != null && sm.del_price > 0;
+                if(!hasDelivery && !hasPrice) return;
                 let wm = wk.mags.find(m => fuzzyMatch(m.title, sm.title));
                 if(!wm){
                   // Auto-add any title the scan found that isn't in the list yet

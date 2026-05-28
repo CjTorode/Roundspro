@@ -2593,20 +2593,11 @@ function rShop(){
           const compressed = await compressImage(ev.target.result);
           const b64 = compressed.split(',')[1];
           const apiKey = localStorage.getItem('cjt_anthropicKey');
-          if(!apiKey){
-            if(toastEl) toastEl.style.display='none';
-            alert('⚠ Anthropic API key not set.\n\nGo to ⚙ Settings → "Anthropic API Key" and paste your key (sk-ant-…) to enable scanning.');
-            return;
-          }
+          // Note: scan now goes via Netlify function — API key stored server-side
           try {
-            const resp = await fetch('https://api.anthropic.com/v1/messages', {
+            const resp = await fetch('/.netlify/functions/scan', {
               method:'POST',
-              headers:{
-                'Content-Type':'application/json',
-                'x-api-key': apiKey,
-                'anthropic-version':'2023-06-01',
-                'anthropic-dangerous-direct-browser-access':'true'
-              },
+              headers:{'Content-Type':'application/json'},
               body: JSON.stringify({
                 model:'claude-sonnet-4-20250514',
                 max_tokens:2000,
@@ -2707,7 +2698,7 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
               })
             });
             const rawText = await resp.text();
-            if(!resp.ok){ throw new Error('API error '+resp.status+': '+rawText.slice(0,200)); }
+            if(!resp.ok){ throw new Error('Scan error '+resp.status+': '+rawText.slice(0,200)); }
             let data;
             try { data = JSON.parse(rawText); } catch(e) { throw new Error('Bad response: ' + rawText.slice(0,200)); }
             const text = (data.content||[]).filter(x=>x.type==='text').map(x=>x.text).join('');

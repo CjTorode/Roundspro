@@ -219,7 +219,7 @@ const S={get:(k,fb)=>{try{const v=localStorage.getItem('cjt_'+k);return v?JSON.p
 const DB = {
   SETTINGS_KEYS: ['gstRate','gstEnabled','gstNumber','defaultDelivery','showCostPrice',
     'calEvents','billingStart','billingPeriod','billingStart2','billingPeriod2','bizDetails','lastWedCharge','billStyle',
-    'shopDiscountPaper','shopDiscountMag','shopEmail'],
+    'shopDiscountPaper','shopDiscountMag','shopEmail','sendgridKey'],
 
   async saveCustomers(){
     if(!getSB()) return;
@@ -585,9 +585,12 @@ const st={
   shopDiscountMag: S.get('shopDiscountMag', 10),
   shopEmail: S.get('shopEmail', 'Zac@alliance.gg'),
   shopFromEmail: S.get('shopFromEmail', 'Craigpapers@icloud.com'),
+  sendgridKey: S.get('sendgridKey', ''),
   shopEditWeek: null,
   shopViewWeek: null,
   billingRoundFilter: 'all',
+  reprintStart: null,
+  reprintDays: 28,
 };
 
 // ── HARDCODED LIST ORDER (set May 2026) ──────────────────────────
@@ -923,13 +926,17 @@ function printBill(cid){
   doPrint(html);
 }
 
-function emailBill(cid){
-  const c=st.customers.find(x=>x.id===cid);if(!c)return;
-  if(!c.email){alert('No email address on file for '+c.name+'.\nAdd their email in the customer record first.');return;}
-  const bill=calcBill(c,getBillingStart(c),28);
-  const biz=st.bizDetails;const gst=st.gstEnabled?st.gstRate:0;
-  const period=st.billingPeriod||fds(st.billingStart)+' onwards';
-  const line=s=>s+'\r\n';const sep='-'.repeat(50);
+// ── EMAIL INVOICE HELPERS ────────────────────────────────────────────
+
+// Build plain-text version of a bill
+function buildPlainTextBill(c, startOverride, daysOverride){
+  const start = startOverride || getBillingStart(c);
+  const days  = daysOverride  || 28;
+  const bill=calcBill(c,start,days);
+  const biz=st.bizDetails; const gst=st.gstEnabled?st.gstRate:0;
+  const rpEnd=new Date(start); rpEnd.setDate(rpEnd.getDate()+days-1);
+  const period=fds(start)+' – '+fds(rpEnd.toISOString().split('T')[0]);
+  const line=s=>s+'\r\n'; const sep='-'.repeat(50);
   let body='';
   body+=line(biz.name||'C J Torode Newsagent');
   if(biz.address)body+=line(biz.address);
@@ -940,12 +947,12 @@ function emailBill(cid){
   const outstanding=c.balance<0?Math.abs(c.balance):0;
   const totalPayable=bill.grandTotal+outstanding;
   if(st.billStyle==='weekly'){
-    const wr=buildWeeklyRows(c,getBillingStart(c));
+    const wr=buildWeeklyRows(c,start);
     body+=line('WEEKLY SUMMARY');body+=line(sep);
     wr.forEach(r=>{body+=line(r.label+(r.hdays>0?' ('+r.hdays+' holiday day'+(r.hdays!==1?'s':'')+' deducted)':'')+'   '+fmt(r.total));});
     body+=line(sep);
     body+=line('This cycle'.padEnd(40)+fmt(bill.grandTotal));
-    if(outstanding>0){body+=line('Previous outstanding'.padEnd(40)+fmt(outstanding));body+=line('-'.repeat(50));body+=line('TOTAL TO PAY'.padEnd(40)+fmt(totalPayable));}
+    if(outstanding>0){body+=line('Previous outstanding'.padEnd(40)+fmt(outstanding));body+=line(sep);body+=line('TOTAL TO PAY'.padEnd(40)+fmt(totalPayable));}
     else body+=line('TOTAL TO PAY'.padEnd(40)+fmt(bill.grandTotal));
   } else {
     body+=line('ITEMISED BILL');body+=line(sep);
@@ -958,23 +965,179 @@ function emailBill(cid){
     body+=line(sep);
     if(gst>0){body+=line('Subtotal'.padEnd(40)+fmt(bill.subtotal));body+=line(('GST @ '+gst+'%').padEnd(40)+fmt(bill.gstTotal));}
     body+=line('This cycle'.padEnd(40)+fmt(bill.grandTotal));
-    if(outstanding>0){body+=line('Previous outstanding'.padEnd(40)+fmt(outstanding));body+=line('-'.repeat(50));body+=line('TOTAL TO PAY'.padEnd(40)+fmt(totalPayable));}
+    if(outstanding>0){body+=line('Previous outstanding'.padEnd(40)+fmt(outstanding));body+=line(sep);body+=line('TOTAL TO PAY'.padEnd(40)+fmt(totalPayable));}
     else body+=line('TOTAL TO PAY'.padEnd(40)+fmt(bill.grandTotal));
     if(bill.holidayDays>0){body+=line('');body+=line('* '+bill.holidayDays+' holiday day'+(bill.holidayDays!==1?'s':'')+' deducted');}
   }
   if(biz.paymentInfo){body+=line('');body+=line('Payment Details:');body+=line(biz.paymentInfo);}
   body+=line('');body+=line('Thank you for your custom.');body+=line(biz.name||'C J Torode Newsagent');
-  window.location.href='mailto:'+c.email+'?subject='+encodeURIComponent((biz.name||'C J Torode')+' — Invoice '+period)+'&body='+encodeURIComponent(body);
+  return body;
 }
 
-function emailAllBills(custList){
+// Build HTML email version of a bill (inline styles for email client compatibility)
+function buildHTMLEmail(c, startOverride, daysOverride){
+  const start = startOverride || getBillingStart(c);
+  const days  = daysOverride  || 28;
+  const bill=calcBill(c,start,days);
+  const biz=st.bizDetails; const gst=st.gstEnabled?st.gstRate:0;
+  const rpEnd=new Date(start); rpEnd.setDate(rpEnd.getDate()+days-1);
+  const period=fds(start)+' – '+fds(rpEnd.toISOString().split('T')[0]);
+  const td2=new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});
+  const outstanding=c.balance<0?Math.abs(c.balance):0;
+  const totalPayable=bill.grandTotal+outstanding;
+
+  const rowStyle='padding:8px 10px;border-bottom:1px solid #e8e0d0;font-size:13px;font-family:Georgia,serif';
+  const labelStyle='color:#555;width:60%';
+  const amtStyle='text-align:right;font-weight:bold';
+
+  let rows='';
+  if(st.billStyle==='weekly'){
+    const wr=buildWeeklyRows(c,start);
+    wr.forEach(r=>{
+      rows+=`<tr><td style="${rowStyle};${labelStyle}">${r.label}${r.hdays>0?' <em>('+r.hdays+' holiday day'+(r.hdays!==1?'s':'')+' deducted)</em>':''}</td><td style="${rowStyle};${amtStyle}">${fmt(r.total)}</td></tr>`;
+    });
+  } else {
+    bill.lines.forEach(l=>{
+      rows+=`<tr><td style="${rowStyle};${labelStyle}">${l.title} <span style="color:#888;font-size:12px">(${l.label})</span></td><td style="${rowStyle};${amtStyle}">${fmt(l.lineTotal)}</td></tr>`;
+    });
+    rows+=`<tr><td style="${rowStyle};${labelStyle}">Delivery (${Math.round(days/7)} weeks)</td><td style="${rowStyle};${amtStyle}">${fmt(bill.deliveryTotal)}</td></tr>`;
+    if(gst>0){
+      rows+=`<tr><td style="${rowStyle};${labelStyle}">Subtotal</td><td style="${rowStyle};${amtStyle}">${fmt(bill.subtotal)}</td></tr>`;
+      rows+=`<tr><td style="${rowStyle};${labelStyle}">GST @ ${gst}%</td><td style="${rowStyle};${amtStyle}">${fmt(bill.gstTotal)}</td></tr>`;
+    }
+    if(bill.holidayDays>0){
+      rows+=`<tr><td style="${rowStyle};color:#5a7ec8" colspan="2">🏖 ${bill.holidayDays} holiday day${bill.holidayDays!==1?'s':''} deducted — ${bill.chargeDays} days charged</td></tr>`;
+    }
+  }
+  // This cycle total
+  rows+=`<tr style="background:#f5f0e8"><td style="${rowStyle};font-weight:bold">This cycle</td><td style="${rowStyle};${amtStyle};font-size:15px">${fmt(bill.grandTotal)}</td></tr>`;
+  if(outstanding>0){
+    rows+=`<tr><td style="${rowStyle};${labelStyle}">Previous outstanding</td><td style="${rowStyle};${amtStyle};color:#b94040">${fmt(outstanding)}</td></tr>`;
+    rows+=`<tr style="background:#b94040"><td style="${rowStyle};font-weight:bold;color:#fff;font-size:16px">TOTAL TO PAY</td><td style="${rowStyle};${amtStyle};color:#fff;font-size:16px">${fmt(totalPayable)}</td></tr>`;
+  }
+
+  const payBlock = biz.paymentInfo
+    ? `<div style="margin-top:16px;padding:12px 16px;background:#f5f0e8;border:1px solid #c8a84b;border-radius:4px;font-size:12px;font-family:Georgia,serif;line-height:1.7">
+        <strong>Payment Details:</strong><br>${biz.paymentInfo.replace(/\n/g,'<br>')}
+       </div>` : '';
+
+  const emailNudge = !(c.email||'').trim()
+    ? `<div style="margin-top:12px;padding:10px 14px;border:1px dashed #aaa;border-radius:3px;font-size:12px;color:#555;font-family:Georgia,serif">
+        <strong>📰 Prefer to receive your invoice by email?</strong><br>
+        Email us at <strong>craigpapers@icloud.com</strong> with your house name and we'll switch you to email billing.
+       </div>` : '';
+
+  return `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f5f0e8;font-family:Georgia,serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f0e8;padding:24px 0">
+<tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:6px;overflow:hidden;border:1px solid #ddd;max-width:600px;width:100%">
+  <!-- Header -->
+  <tr><td style="background:#1a1a1a;padding:20px 28px;border-bottom:4px solid #c8a84b">
+    <div style="font-size:22px;font-weight:bold;letter-spacing:1px;color:#c8a84b">🗞 ${biz.name||'C J TORODE'}</div>
+    <div style="font-size:11px;letter-spacing:3px;color:#888;text-transform:uppercase;margin-top:2px">Newsagent · Customer Invoice</div>
+    ${biz.address?`<div style="font-size:12px;color:#777;margin-top:4px">${biz.address}</div>`:''}
+    ${biz.phone?`<div style="font-size:12px;color:#777">Tel: ${biz.phone}</div>`:''}
+  </td></tr>
+  <!-- Meta row -->
+  <tr><td style="padding:16px 28px;border-bottom:1px solid #e8e0d0;background:#fffbe6">
+    <table width="100%" cellpadding="0" cellspacing="0"><tr>
+      <td style="font-size:13px;font-family:Georgia,serif">
+        <strong>Bill To:</strong> ${c.name}<br>
+        <span style="color:#666">${c.address}${c.phone?' · '+c.phone:''}</span>
+      </td>
+      <td align="right" style="font-size:12px;color:#555;font-family:Georgia,serif">
+        <strong>Date:</strong> ${td2}<br>
+        <strong>Period:</strong> ${period}<br>
+        ${c.gstExempt?'<em>GST Exempt</em>':''}
+      </td>
+    </tr></table>
+  </td></tr>
+  <!-- Line items -->
+  <tr><td style="padding:0 28px 16px">
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:16px">
+      <tr style="background:#1a1a1a">
+        <th style="padding:8px 10px;text-align:left;font-size:11px;color:#c8a84b;letter-spacing:.5px;text-transform:uppercase">Description</th>
+        <th style="padding:8px 10px;text-align:right;font-size:11px;color:#c8a84b;letter-spacing:.5px;text-transform:uppercase">Amount</th>
+      </tr>
+      ${rows}
+    </table>
+    ${payBlock}
+    ${emailNudge}
+    <div style="margin-top:16px;font-size:12px;color:#888;font-family:Georgia,serif;border-top:1px solid #e8e0d0;padding-top:10px;text-align:center">
+      Thank you for your custom — ${biz.name||'C J Torode Newsagent'}
+    </div>
+  </td></tr>
+</table>
+</td></tr></table>
+</body></html>`;
+}
+
+// Send a single bill via SendGrid (async, returns promise)
+async function sendBillViaSendGrid(c, startOverride, daysOverride){
+  if(!c.email) throw new Error('No email address for '+c.name);
+  const start  = startOverride || getBillingStart(c);
+  const days   = daysOverride  || 28;
+  const rpEnd  = new Date(start); rpEnd.setDate(rpEnd.getDate()+days-1);
+  const period = fds(start)+' – '+fds(rpEnd.toISOString().split('T')[0]);
+  const biz    = st.bizDetails;
+  const subject= (biz.name||'C J Torode')+' — Invoice '+period;
+  const html   = buildHTMLEmail(c, start, days);
+  const text   = buildPlainTextBill(c, start, days);
+
+  const resp = await fetch('/.netlify/functions/send-email', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      to:       c.email,
+      subject:  subject,
+      html:     html,
+      text:     text,
+      from:     biz.email || 'Craigpapers@icloud.com',
+      fromName: biz.name  || 'C J Torode Newsagent'
+    })
+  });
+  const data = await resp.json().catch(()=>({error:'No response body'}));
+  if(!resp.ok) throw new Error(data.error || 'Send failed ('+resp.status+')');
+  return data;
+}
+
+// emailBill — tries SendGrid first, falls back to mailto if no Netlify function
+function emailBill(cid, startOverride, daysOverride){
+  const c=st.customers.find(x=>x.id===cid); if(!c)return;
+  if(!c.email){alert('No email address on file for '+c.name+'.\nAdd their email in the customer record first.');return;}
+  // Always use SendGrid path (mailto fallback removed — use Settings to configure)
+  sendBillViaSendGrid(c, startOverride, daysOverride)
+    .then(()=>toast('✓ Invoice sent to '+c.name+' ('+c.email+')'))
+    .catch(err=>toast('⚠ Failed to send to '+c.name+': '+err.message));
+}
+
+// emailAllBills — sends all via SendGrid with progress toasts
+async function emailAllBills(custList, startOverride, daysOverride){
   const allCusts = custList || (isDriver()?st.customers.filter(c=>c.roundId==='round-2'):st.customers);
   const withEmail=allCusts.filter(c=>c.email);
   const without=allCusts.filter(c=>!c.email);
   if(!withEmail.length){alert('No customers have email addresses on file.');return;}
-  const msg='Send bills to '+withEmail.length+' customer'+(withEmail.length!==1?'s':'')+' with email addresses?'+(without.length?'\n\nNo email on file for:\n'+without.map(c=>c.name).join('\n'):'');
-  if(!confirm(msg))return;
-  withEmail.forEach((c,i)=>setTimeout(()=>emailBill(c.id),i*800));
+  toast('📧 Sending '+withEmail.length+' invoice'+(withEmail.length!==1?'s':'')+'…');
+  let sent=0, failed=[];
+  for(const c of withEmail){
+    try{
+      await sendBillViaSendGrid(c, startOverride, daysOverride);
+      sent++;
+    } catch(e){
+      failed.push(c.name+' ('+e.message+')');
+    }
+    // Small delay to avoid hammering SendGrid
+    await new Promise(r=>setTimeout(r,200));
+  }
+  if(failed.length){
+    toast('✓ Sent '+sent+' · ⚠ Failed: '+failed.length);
+    alert('⚠ Failed to send to:\n'+failed.join('\n'));
+  } else {
+    toast('✓ All '+sent+' invoice'+(sent!==1?'s':'')+' sent successfully');
+  }
+  if(without.length) toast('ℹ '+without.length+' customer'+(without.length!==1?'s':'')+' skipped (no email)');
 }
 
 function showBillModal(cid){st.showBillModal=cid;render();}
@@ -1348,6 +1511,7 @@ function rBilling(){
           const custs = getBillingCusts();
           const toEmail = custs.filter(c=>c.email);
           if(!toEmail.length){alert('No customers with email addresses in this selection.');return;}
+          if(!confirm('Send invoices to '+toEmail.length+' customer'+(toEmail.length!==1?'s':'')+' by email?\n\nEmails will be sent automatically via SendGrid — no Mail app needed.'))return;
           emailAllBills(toEmail);
         })
       )
@@ -1450,6 +1614,7 @@ function rBilling(){
               const roundFiltered = (st.billingRoundFilter&&st.billingRoundFilter!=='all') ? allC.filter(c=>c.roundId===st.billingRoundFilter) : allC;
               const toEmail = roundFiltered.filter(function(c){return c.email;});
               if(!toEmail.length){alert('No customers with email addresses in this selection.');return;}
+              if(!confirm('Send invoices to '+toEmail.length+' customer'+(toEmail.length!==1?'s':'')+' by email?\n\nEmails will be sent automatically via SendGrid — no Mail app needed.'))return;
               emailAllBills(toEmail);
             })
           ),
@@ -1934,9 +2099,68 @@ function rModals(){
   if(st.showBillModal){
     const c=st.customers.find(cu=>cu.id===st.showBillModal);
     if(c){
-      const bill=calcBill(c,getBillingStart(c),28);
-      const wr=buildWeeklyRows(c,getBillingStart(c));
+      // Reprint mode: use custom start/days if set, else use current billing cycle
+      const rpStart = st.reprintStart || getBillingStart(c);
+      const rpDays  = st.reprintDays  || 28;
+      const bill=calcBill(c,rpStart,rpDays);
+      const wr=buildWeeklyRows(c,rpStart);
+      const isReprint = !!st.reprintStart;
+
+      // Helper: print/email using current rpStart/rpDays overrides
+      function doPrintBill(){
+        const css=getInvoiceCSS();
+        // Temporarily swap billingStart for this customer's round so buildInvoiceHTML picks up the right period
+        const origStart = c.roundId==='round-2'?st.billingStart2:st.billingStart;
+        const origPeriod = c.roundId==='round-2'?st.billingPeriod2:st.billingPeriod;
+        const startKey = c.roundId==='round-2'?'billingStart2':'billingStart';
+        const periodKey = c.roundId==='round-2'?'billingPeriod2':'billingPeriod';
+        if(isReprint){
+          st[startKey]=rpStart;
+          const rpEnd=new Date(rpStart);rpEnd.setDate(rpEnd.getDate()+rpDays-1);
+          st[periodKey]=fds(rpStart)+' – '+fds(rpEnd.toISOString().split('T')[0]);
+        }
+        const html='<!DOCTYPE html><html><head><meta charset="utf-8"><style>'+css+'</style></head><body>'+buildInvoiceHTML(c)+'</body></html>';
+        if(isReprint){st[startKey]=origStart;st[periodKey]=origPeriod;}
+        doPrint(html);
+      }
+      function doEmailBill(){
+        if(!c.email){alert('No email address on file for '+c.name+'.');return;}
+        sendBillViaSendGrid(c, isReprint?rpStart:undefined, isReprint?rpDays:undefined)
+          .then(()=>{toast('✓ Invoice sent to '+c.email);st.showBillModal=null;st.reprintStart=null;st.reprintDays=28;render();})
+          .catch(err=>{alert('⚠ Failed to send: '+err.message);});
+      }
+
       ms.push(mod('🧾 Send Bill — '+c.name,h('div',{},
+        // Reprint date picker
+        h('div',{className:'a3',style:{marginBottom:'14px'}},
+          h('div',{style:{fontWeight:'bold',fontSize:'12px',marginBottom:'8px',textTransform:'uppercase',letterSpacing:'.5px'}},'📅 Billing Period'),
+          h('div',{style:{display:'flex',gap:'10px',alignItems:'flex-end',flexWrap:'wrap'}},
+            h('div',{},
+              lbl('Cycle Start Date'),
+              h('input',{type:'date',className:'fi',style:{marginBottom:'0',width:'160px'},
+                value:rpStart,
+                onchange:e=>{st.reprintStart=e.target.value;render();}
+              })
+            ),
+            h('div',{},
+              lbl('Days'),
+              h('select',{className:'fi',style:{marginBottom:'0',width:'110px'},
+                value:String(rpDays),
+                onchange:e=>{st.reprintDays=parseInt(e.target.value);render();}
+              },
+                h('option',{value:'28'},'28 days'),
+                h('option',{value:'14'},'14 days'),
+                h('option',{value:'7'},'7 days')
+              )
+            ),
+            isReprint
+              ? h('button',{className:'btn b3',style:{padding:'6px 12px',fontSize:'12px',marginBottom:'1px'},onclick:()=>{st.reprintStart=null;st.reprintDays=28;render();}},'↩ Current cycle')
+              : h('div',{style:{fontSize:'11px',color:'#888',paddingBottom:'4px'}},'← Current cycle')
+          ),
+          isReprint
+            ? h('div',{style:{fontSize:'12px',color:'#b94040',marginTop:'6px',fontWeight:'bold'}},'⚠ Reprinting past cycle')
+            : null
+        ),
         h('div',{style:{fontSize:'13px',color:'#555',marginBottom:'12px'}},'Bill style is set in ⚙ Settings and applies to all customers.'),
         h('div',{className:'a3',style:{marginBottom:'14px'}},
           h('div',{style:{fontWeight:'bold',fontSize:'12px',marginBottom:'8px',textTransform:'uppercase',letterSpacing:'.5px'}},st.billStyle==='weekly'?'📅 Weekly Summary':'📋 Itemised Bill'),
@@ -1954,12 +2178,12 @@ function rModals(){
           )
         ),
         h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px'}},
-          btn('b1','🖨 Print',()=>{printBill(c.id);st.showBillModal=null;render();}),
+          btn('b1','🖨 Print',()=>{doPrintBill();st.showBillModal=null;st.reprintStart=null;st.reprintDays=28;render();}),
           c.email
-            ?btn('b4','📧 Email to '+c.email.split('@')[0],()=>{emailBill(c.id);st.showBillModal=null;render();})
+            ?btn('b4','📧 Email to '+c.email.split('@')[0],()=>{doEmailBill();st.showBillModal=null;st.reprintStart=null;st.reprintDays=28;render();})
             :h('div',{style:{background:'#f5f5f5',border:'1px solid #ddd',borderRadius:'3px',padding:'10px 6px',fontSize:'11px',color:'#aaa',textAlign:'center'}},'📧 No email on file')
         )
-      ),()=>{st.showBillModal=null;render();}));
+      ),()=>{st.showBillModal=null;st.reprintStart=null;st.reprintDays=28;render();}));
     }
   }
 
@@ -2364,10 +2588,21 @@ function rShop(){
           });
           const compressed = await compressImage(ev.target.result);
           const b64 = compressed.split(',')[1];
+          const apiKey = localStorage.getItem('cjt_anthropicKey');
+          if(!apiKey){
+            if(toastEl) toastEl.style.display='none';
+            alert('⚠ Anthropic API key not set.\n\nGo to ⚙ Settings → "Anthropic API Key" and paste your key (sk-ant-…) to enable scanning.');
+            return;
+          }
           try {
-            const resp = await fetch('/.netlify/functions/scan', {
+            const resp = await fetch('https://api.anthropic.com/v1/messages', {
               method:'POST',
-              headers:{'Content-Type':'application/json'},
+              headers:{
+                'Content-Type':'application/json',
+                'x-api-key': apiKey,
+                'anthropic-version':'2023-06-01',
+                'anthropic-dangerous-direct-browser-access':'true'
+              },
               body: JSON.stringify({
                 model:'claude-sonnet-4-20250514',
                 max_tokens:2000,
@@ -2468,6 +2703,7 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
               })
             });
             const rawText = await resp.text();
+            if(!resp.ok){ throw new Error('API error '+resp.status+': '+rawText.slice(0,200)); }
             let data;
             try { data = JSON.parse(rawText); } catch(e) { throw new Error('Bad response: ' + rawText.slice(0,200)); }
             const text = (data.content||[]).filter(x=>x.type==='text').map(x=>x.text).join('');
@@ -2780,23 +3016,31 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
           URL.revokeObjectURL(url);
           toast('✓ Invoice downloaded');
         }},'⬇ Download HTML'),
-        h('button',{className:'btn b1',onclick:()=>{
-          const html = shopInvoiceHTML(wk, biz);
-          const subject = encodeURIComponent('Invoice '+wk.invoiceNum+' — Week Ending '+wk.weekEnd);
-          const body = encodeURIComponent(
+        h('button',{className:'btn b1',onclick:async ()=>{
+          const toEmail = st.shopEmail || 'Zac@alliance.gg';
+          const biz2 = st.bizDetails;
+          const subject = 'Invoice '+wk.invoiceNum+' — Week Ending '+wk.weekEnd;
+          const html2 = shopInvoiceHTML(wk, biz2);
+          const text2 =
             'Dear Zac,\n\nPlease find enclosed Invoice '+wk.invoiceNum+' for the week ending '+wk.weekEnd+'.\n\n'+
             '  Total Newspapers:  £'+c.totalPapers.toFixed(2)+'\n'+
             '  Total Magazines:   £'+c.totalMags.toFixed(2)+'\n'+
             '  Less Discount:     −£'+c.totalDiscount.toFixed(2)+'\n'+
             '  ─────────────────────────\n'+
             '  TOTAL DUE:         £'+c.totalDue.toFixed(2)+'\n\n'+
-            'Kind regards,\nCraig Torode\n'+
-            (biz.address||'Sablonierre, Grandes Rocques, Castel, Guernsey. GY5 7FR')+'\n'+
-            (biz.phone||'')+'\nCraigpapers@icloud.com'
-          );
-          const toEmail = st.shopEmail || 'Zac@alliance.gg';
-          window.location.href = 'mailto:'+toEmail+'?subject='+subject+'&body='+body;
-          setTimeout(()=>alert('📧 Remember to send from:\nCraigpapers@icloud.com\n\nTap the "From" field in Mail if needed.'), 300);
+            'Kind regards,\nCraig Torode\n'+(biz2.address||'Sablonierre, Grandes Rocques, Castel, Guernsey. GY5 7FR')+'\nCraigpapers@icloud.com';
+          try {
+            const resp2 = await fetch('/.netlify/functions/send-email',{
+              method:'POST',
+              headers:{'Content-Type':'application/json'},
+              body:JSON.stringify({to:toEmail,subject,html:html2,text:text2,from:biz2.email||'Craigpapers@icloud.com',fromName:biz2.name||'C J Torode Newsagent'})
+            });
+            const d2 = await resp2.json().catch(()=>({error:'No response'}));
+            if(!resp2.ok) throw new Error(d2.error||'Send failed');
+            toast('✓ Invoice '+wk.invoiceNum+' sent to '+toEmail);
+          } catch(e2){
+            toast('⚠ Send failed: '+e2.message);
+          }
         }},'✉ Email Invoice'),
         h('button',{className:'btn b3',onclick:()=>{st.shopEditWeek=null;render();}},'✓ Done')
       )

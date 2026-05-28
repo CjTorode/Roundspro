@@ -505,7 +505,7 @@ async function startApp(){
       DB._silent = true;
       await DB.load();
     }
-  }, 60000);
+  }, 15000);
 }
 
 const IR=[];
@@ -2662,7 +2662,10 @@ PAPERS (top section):
   Format: TITLE  [del qty]  [ret qty]
   - First number = delivery quantity
   - Second number (if present) = returns quantity
-  - The page heading shows the day (e.g. "Thurs 14 May" = Thursday)
+  - Returns are written as a CIRCLED number to the right of the delivery quantity
+  - A circled number next to a paper title is ALWAYS the returns quantity
+  - Do NOT return null for returns if there is ANY circled number next to that title
+  - The page heading shows the day (e.g. "Monday 25 May" = mon, "Thurs 14 May" = thu)
   - All quantities on that page are for that single day
 
 MAGAZINES (lower section):
@@ -2749,8 +2752,10 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
 
             save();
             if(toastEl) toastEl.style.display='none';
-            toast('✓ Scan complete — please check returns prices (circled numbers)');
+            toast('✓ Scan complete — syncing to cloud…');
+            await DB.saveShopWeeks();
             render();
+            toast('✓ Scan complete — saved to cloud');
           } catch(err) {
             if(toastEl) toastEl.style.display='none';
             toast('⚠ Scan failed: ' + err.message);

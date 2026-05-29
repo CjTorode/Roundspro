@@ -2925,7 +2925,14 @@ MAGAZINES (lower section, below the papers):
   - If no number before the slash, ret_qty=0
   - If no slash at all, treat the number as del_qty and ret_qty=0
 
-  In BOTH layouts, a DIFFERENT RETURN PRICE can be indicated by writing
+  Prices are always written without decimal points, but may use different separators:
+  - Plain number: 270=2.70, 799=7.99, 1099=10.99, 1999=19.99
+  - With dash: 10-99=10.99, 7-99=7.99, 19-99=19.99, 2-70=2.70
+  - The dash is just a separator, NOT a minus sign — always convert to decimal price
+  - Single or double digit before dash = pounds, two digits after = pence
+  - Examples: "10 — 10-99" means del_qty=10, del_price=10.99
+  -           "10 — 799" means del_qty=10, del_price=7.99
+  -           "4 — 19-99" means del_qty=4, del_price=19.99
   a second price after the delivery price on the same line:
   
   Format: TITLE [ret_qty] [del_qty] — [del_price]  [ret_price]

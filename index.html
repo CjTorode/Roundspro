@@ -3077,9 +3077,30 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
             // Re-find wk in case st.shopWeeks was updated during scan
             const currentWk = st.shopWeeks.find(w => String(w.id) === String(wk.id));
             if(currentWk){
-              // Copy scan results from wk into currentWk
-              currentWk.papers = wk.papers;
-              currentWk.mags = wk.mags;
+              // Merge papers day by day — don't overwrite the whole array
+              currentWk.papers = currentWk.papers.map(cp => {
+                const wp = wk.papers.find(p => p.title === cp.title);
+                if(!wp) return cp;
+                const merged = {...cp};
+                ['mon','tue','wed','thu','fri','sat','sun'].forEach(d => {
+                  if(wp.days[d].del) merged.days[d].del = wp.days[d].del;
+                  if(wp.days[d].ret) merged.days[d].ret = wp.days[d].ret;
+                });
+                return merged;
+              });
+              // Merge mags — update existing, add new
+              wk.mags.forEach(wm => {
+                const cm = currentWk.mags.find(m => m.title === wm.title);
+                if(cm){
+                  if(wm.delQty) cm.delQty = wm.delQty;
+                  if(wm.delPrice) cm.delPrice = wm.delPrice;
+                  if(wm.retQty) cm.retQty = wm.retQty;
+                  if(wm.retPrice) cm.retPrice = wm.retPrice;
+                } else if(wm.delQty) {
+                  currentWk.mags.push(wm);
+                  currentWk.mags.sort((a,b)=>a.title.localeCompare(b.title));
+                }
+              });
             }
             save();
             DB._scanInProgress = false;

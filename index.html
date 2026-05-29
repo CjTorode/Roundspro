@@ -328,8 +328,8 @@ const DB = {
         week_start: w.weekStart || null,
         week_end: w.weekEnd || null,
         invoice_num: String(w.invoiceNum || ''),
-        papers: JSON.stringify(w.papers || []),
-        mags: JSON.stringify(w.mags || []),
+        papers: w.papers || [],
+        mags: w.mags || [],
         overdue: parseFloat(w.overdue) || 0,
         vouchers: parseFloat(w.vouchers) || 0,
         note: w.note || '',
@@ -415,10 +415,9 @@ const DB = {
         applyListOrder();
         S.set('customers', st.customers);
       }
-      // Load shop weeks from Supabase
+      // Load shop weeks from Supabase — merge carefully to avoid overwriting local data with blanks
       if(shopWks && shopWks.length){
-        st.shopWeeks = shopWks.map(r => {
-          // papers/mags may come back as a string if Supabase column is text not jsonb
+        const incoming = shopWks.map(r => {
           let papers = r.papers || [];
           let mags = r.mags || [];
           if(typeof papers === 'string'){ try{ papers = JSON.parse(papers); }catch(e){ papers = []; } }
@@ -435,7 +434,32 @@ const DB = {
             note: r.note || '',
           };
         });
-        // Sort newest first
+
+        // Conflict protection — for each incoming week, check if local version has more data
+        // "has data" = any paper del/ret field is non-empty, or any mag has delQty
+        function weekHasData(wk){
+          if(!wk) return false;
+          const paperData = (wk.papers||[]).some(p=>
+            Object.values(p.days||{}).some(d=>d.del||d.ret)
+          );
+          const magData = (wk.mags||[]).some(m=>m.delQty||m.retQty);
+          return paperData || magData;
+        }
+
+        const merged = incoming.map(remote => {
+          const local = st.shopWeeks.find(w => String(w.id) === String(remote.id));
+          // If local has data but remote doesn't, keep local
+          if(local && weekHasData(local) && !weekHasData(remote)){
+            console.log('shopWeeks: keeping local data for week', remote.id, '— remote was blank');
+            return local;
+          }
+          return remote;
+        });
+
+        // Also keep any local weeks not yet in Supabase
+        const remoteIds = new Set(incoming.map(w => String(w.id)));
+        const localOnly = st.shopWeeks.filter(w => !remoteIds.has(String(w.id)));
+        st.shopWeeks = [...merged, ...localOnly];
         st.shopWeeks.sort((a,b) => (b.weekEnd||'').localeCompare(a.weekEnd||''));
         S.set('shopWeeks', st.shopWeeks);
       }

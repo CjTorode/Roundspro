@@ -2865,14 +2865,39 @@ PAPERS (top section):
   read BOTH columns as papers. Do NOT treat the right column papers as magazines.
   The magazines only start BELOW all the papers, after a clear gap.
   
-  In both layouts:
-  - Delivery quantity is written immediately next to the title
-  - Returns are circled numbers (or plain numbers) to the right of the delivery qty
-  - Match each return number to the paper on the same horizontal row
-  - GP (Guernsey Press) is ALWAYS the last paper listed and has the highest delivery number (50-100+)
-  - Returns may not be circled yet — treat plain numbers in the returns position the same as circled ones
-  - If returns appear crossed out or scribbled, set ret to null — this does NOT affect delivery quantities
-  - Always read delivery quantities regardless of what the returns column looks like
+  GP TOP-UP DELIVERIES:
+  Sometimes GP has two numbers added together, e.g. "GP  100+ 41" or "GP 68+20"
+  This means a top-up delivery was added to the original — ADD them together for the total del qty.
+  Example: "GP  100+ 41" → del_qty = 141
+  Example: "GP  68+20" → del_qty = 88
+
+  SEPARATE RETURNS BLOCK (Friday and Saturday only):
+  For Friday and Saturday, returns may be written as a SEPARATE LABELLED BLOCK
+  lower on the same page or on a separate page, headed "Fri Returns", "Sat Returns",
+  "Friday Returns", "Saturday Returns" or similar.
+  
+  The returns block lists paper titles in the same order as the deliveries above,
+  with a circled or plain return quantity next to each title.
+  
+  CRITICAL: When you see a labelled returns block like this:
+    "Sat Returns"
+    Mirr  (7)
+    Mail  (3)
+    Sun   (4)
+    Exp   (4)
+    Star  (7)
+    Times (1)
+    The i (1)
+    GP    (47)
+  
+  Match each return qty to the paper title listed on the SAME ROW in the returns block,
+  then assign it as the ret value for that paper on the correct day (fri or sat).
+  
+  The returns block does NOT affect delivery quantities — those are already set above.
+  If there is BOTH an inline return column (next to deliveries) AND a separate returns block,
+  use the separate returns block values as they are more accurate.
+
+
   
   On some days returns may be plain numbers (not circled).
   On other days some returns may be circled — treat circled and uncircled the same way.

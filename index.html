@@ -203,6 +203,10 @@ async function sbSelect(table, filter){
   return await sbFetch('GET', table, null, 'select=*&user_id=eq.' + USER_ID + (filter||'') + '&limit=1000');
 }
 
+async function sbSelectShopWeeks(){
+  return await sbFetch('GET', 'shop_weeks', null, 'select=*&user_id=eq.' + USER_ID + '&limit=1000&order=week_end.desc');
+}
+
 async function sbUpsert(table, rows){
   if(!rows.length) return;
   await sbFetch('POST', table, rows);
@@ -330,9 +334,12 @@ const DB = {
         vouchers: parseFloat(w.vouchers) || 0,
         note: w.note || '',
       }));
+      if(!rows.length){ console.log('saveShopWeeks: nothing to save'); return; }
+      console.log('saveShopWeeks: pushing', rows.length, 'weeks, ids:', rows.map(r=>r.id));
       await sbUpsert('shop_weeks', rows);
+      console.log('saveShopWeeks: success');
     } catch(e){
-      console.warn('saveShopWeeks:', e.message);
+      console.warn('saveShopWeeks error:', e.message);
       toast('⚠ Shop sync failed: ' + e.message);
     }
   },
@@ -352,7 +359,7 @@ const DB = {
         sbSelect('rounds'),
         sbSelect('payments'),
         sbSelect('settings'),
-        sbSelect('shop_weeks'),
+        sbSelectShopWeeks(),
       ]);
       if(custs && custs.length){
         const localCusts = S.get('customers', []);
@@ -509,9 +516,10 @@ async function startApp(){
   st.customers = S.get('customers', IR ? [] : []);
   render(); // Show app immediately
   await DB.load(); // Fetch fresh from Supabase
-  // Auto-sync every 60 seconds (silent)
+  // Auto-sync every 15 seconds (silent)
   setInterval(async () => {
     if(getSB()){
+      DB._silent = true;
       await DB.load();
     }
   }, 15000);
@@ -2556,7 +2564,7 @@ function newBlankWeek(){
     title, delQty:'', delPrice:'', retQty:'', retPrice:''
   })).sort((a,b)=>a.title.localeCompare(b.title));
   return {
-    id: uuidv4(),
+    id: Date.now(),
     weekStart: fmt(mon),
     weekEnd: fmt(sun),
     invoiceNum: Date.now() % 100000,

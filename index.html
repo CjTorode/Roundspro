@@ -2524,7 +2524,7 @@ const SHOP_MAGS_DEFAULT = [
   'Real People','TAB Fiction Feast','TAB Mini Arrowords Collection','Take A Break',
   "That's Life Weekly",'Total TV Guide','TV & Streaming Weekly',
   'TV Choice','Whats On TV Weekly','Woman','Womans Own','Womans Weekly','Yours'
-];
+].sort((a,b)=>a.localeCompare(b));
 
 function newBlankWeek(){
   const now = new Date();
@@ -2542,7 +2542,7 @@ function newBlankWeek(){
   });
   const mags = (S.get('shopMagList', SHOP_MAGS_DEFAULT)).map(title => ({
     title, delQty:'', delPrice:'', retQty:'', retPrice:''
-  }));
+  })).sort((a,b)=>a.title.localeCompare(b.title));
   return {
     id: uuidv4(),
     weekStart: fmt(mon),
@@ -2860,6 +2860,20 @@ MAGAZINES (lower section, below the papers):
   - If no number before the slash, ret_qty=0
   - If no slash at all, treat the number as del_qty and ret_qty=0
 
+  In BOTH layouts, a DIFFERENT RETURN PRICE can be indicated by writing
+  a second price after the delivery price on the same line:
+  
+  Format: TITLE [ret_qty] [del_qty] — [del_price]  [ret_price]
+  
+  Examples:
+    "Woman  (7)  4 — 245  220"  → ret_qty=7, del_qty=4, del_price=2.45, ret_price=2.20
+    "Woman  7 / 4 — 245  220"   → ret_qty=7, del_qty=4, del_price=2.45, ret_price=2.20
+    "Best   3 / 4 — 299  275"   → ret_qty=3, del_qty=4, del_price=2.99, ret_price=2.75
+  
+  If only ONE price appears on the line, use it as BOTH del_price and ret_price.
+  If TWO prices appear on the line (after the dash), the FIRST is del_price, the SECOND is ret_price.
+  Prices are always written without decimal points: 220=2.20, 275=2.75, 245=2.45 etc.
+
   In BOTH layouts:
   - Prices are written without decimal points: 270=2.70, 245=2.45, 190=1.90, 750=7.50, 1099=10.99, 350=3.50, 299=2.99, 145=1.45, 320=3.20, 425=4.25, 450=4.50, 99=0.99, 350=3.50, 235=2.35, 550=5.50, 110=1.10, 380=3.80, 85=0.85, 88=0.88, 199=1.99, 230=2.30, 180=1.80
   - If no return number present, ret_qty=0
@@ -2956,6 +2970,7 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
                   if(!isFifa) return; // skip unknown non-FIFA titles
                   wm = {title: sm.title, delQty:'', delPrice:'', retQty:'', retPrice:''};
                   wk.mags.push(wm);
+                  wk.mags.sort((a,b)=>a.title.localeCompare(b.title));
                 }
                 if(sm.del_qty != null) wm.delQty = String(sm.del_qty);
                 if(sm.del_price != null) wm.delPrice = String(sm.del_price);
@@ -3198,6 +3213,7 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
             const title = custom || sel;
             if(!title){toast('Pick or type a magazine title');return;}
             wk.mags.push({title,delQty:'',delPrice:'',retQty:'',retPrice:''});
+            wk.mags.sort((a,b)=>a.title.localeCompare(b.title));
             save(); render();
           }},'+ Add')
         )

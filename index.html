@@ -877,7 +877,7 @@ function getInvoiceCSS(){
   return '@page{size:A5 portrait;margin:12mm}*{box-sizing:border-box}body{font-family:Georgia,serif;font-size:13px;color:#1a1a1a;margin:0}h1{font-size:20px;margin:0;letter-spacing:1px}.sub{font-size:10px;letter-spacing:3px;text-transform:uppercase;color:#888}.hdr{border-bottom:3px solid #1a1a1a;padding-bottom:8px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:flex-start}.biz{font-size:10px;color:#555;margin-top:4px;line-height:1.5}.hr{text-align:right;font-size:12px;color:#555}.bt{margin-bottom:10px}table{width:100%;border-collapse:collapse;margin:8px 0;font-size:12px}th{background:#1a1a1a;color:#c8a84b;padding:7px 8px;text-align:left;font-size:11px}th:not(:first-child){text-align:right}td{padding:7px 8px;border-bottom:1px solid #e0d8cc}td:not(:first-child){text-align:right}.tr td{font-weight:bold;background:#f5f0e8}.gr td{font-weight:bold;font-size:14px;background:#1a1a1a;color:#c8a84b}.tot td{font-weight:bold;font-size:16px;background:#b94040;color:white}.pay{margin-top:8px;padding:8px 12px;background:#f5f0e8;border:1px solid #c8a84b;border-radius:3px;font-size:12px;line-height:1.7}.hol{margin-top:8px;padding:8px 12px;background:#eef3ff;border:1px solid #5a7ec8;border-radius:3px;font-size:12px}.em{margin-top:10px;padding:10px 12px;border:1px dashed #999;border-radius:3px;font-size:11px;color:#555}.ft{margin-top:10px;font-size:12px;font-weight:bold;border-top:2px solid #1a1a1a;padding-top:6px}html{-webkit-print-color-adjust:exact;print-color-adjust:exact}a[href]:after{content:none!important}@media print{@page{size:A5 portrait;margin:12mm}html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}';
 }
 
-function buildInvoiceHTML(c){
+function buildInvoiceHTML(c, suppressBalance){
   var bill=calcBill(c,getBillingStart(c),28);
   var biz=st.bizDetails;var gst=st.gstEnabled?st.gstRate:0;
   var td=new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});
@@ -887,7 +887,7 @@ function buildInvoiceHTML(c){
     +'<div class="hr"><strong>Date:</strong> '+td+'<br/><strong>Period:</strong> '+(getBillingPeriod(c)||'4-week cycle')+(c.gstExempt?'<br/><em>GST Exempt</em>':'')+'</div></div>'
     +'<div class="bt"><strong>Bill To:</strong><br/>'+c.name+'<br/>'+c.address+(c.phone?'<br/>'+c.phone:'')+'</div>';
   var table='';
-  var outstanding=c.balance<0?Math.abs(c.balance):0;
+  var outstanding=(!suppressBalance&&c.balance<0)?Math.abs(c.balance):0;
   var totalPayable=bill.grandTotal+outstanding;
   if(st.billStyle==='weekly'){
     var wr=buildWeeklyRows(c,getBillingStart(c));
@@ -935,7 +935,7 @@ function printBill(cid){
 // ── EMAIL INVOICE HELPERS ────────────────────────────────────────────
 
 // Build plain-text version of a bill
-function buildPlainTextBill(c, startOverride, daysOverride){
+function buildPlainTextBill(c, startOverride, daysOverride, suppressBalance){
   const start = startOverride || getBillingStart(c);
   const days  = daysOverride  || 28;
   const bill=calcBill(c,start,days);
@@ -950,7 +950,7 @@ function buildPlainTextBill(c, startOverride, daysOverride){
   body+=line('');body+=line('INVOICE');body+=line(sep);
   body+=line('To: '+c.name);body+=line('    '+c.address);
   body+=line('Billing Period: '+period);body+=line('');
-  const outstanding=c.balance<0?Math.abs(c.balance):0;
+  const outstanding=(!suppressBalance&&c.balance<0)?Math.abs(c.balance):0;
   const totalPayable=bill.grandTotal+outstanding;
   if(st.billStyle==='weekly'){
     const wr=buildWeeklyRows(c,start);
@@ -981,7 +981,7 @@ function buildPlainTextBill(c, startOverride, daysOverride){
 }
 
 // Build HTML email version of a bill (inline styles for email client compatibility)
-function buildHTMLEmail(c, startOverride, daysOverride){
+function buildHTMLEmail(c, startOverride, daysOverride, suppressBalance){
   const start = startOverride || getBillingStart(c);
   const days  = daysOverride  || 28;
   const bill=calcBill(c,start,days);
@@ -989,7 +989,7 @@ function buildHTMLEmail(c, startOverride, daysOverride){
   const rpEnd=new Date(start); rpEnd.setDate(rpEnd.getDate()+days-1);
   const period=fds(start)+' – '+fds(rpEnd.toISOString().split('T')[0]);
   const td2=new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});
-  const outstanding=c.balance<0?Math.abs(c.balance):0;
+  const outstanding=(!suppressBalance&&c.balance<0)?Math.abs(c.balance):0;
   const totalPayable=bill.grandTotal+outstanding;
 
   const rowStyle='padding:8px 10px;border-bottom:1px solid #e8e0d0;font-size:13px;font-family:Georgia,serif';
@@ -1085,7 +1085,7 @@ function buildHTMLEmail(c, startOverride, daysOverride){
 }
 
 // Send a single bill via SendGrid (async, returns promise)
-async function sendBillViaSendGrid(c, startOverride, daysOverride){
+async function sendBillViaSendGrid(c, startOverride, daysOverride, suppressBalance){
   if(!c.email) throw new Error('No email address for '+c.name);
   const start  = startOverride || getBillingStart(c);
   const days   = daysOverride  || 28;
@@ -1093,8 +1093,8 @@ async function sendBillViaSendGrid(c, startOverride, daysOverride){
   const period = fds(start)+' – '+fds(rpEnd.toISOString().split('T')[0]);
   const biz    = st.bizDetails;
   const subject= (biz.name||'C J Torode')+' — Invoice '+period;
-  const html   = buildHTMLEmail(c, start, days);
-  const text   = buildPlainTextBill(c, start, days);
+  const html   = buildHTMLEmail(c, start, days, suppressBalance);
+  const text   = buildPlainTextBill(c, start, days, suppressBalance);
 
   const resp = await fetch('/.netlify/functions/send-email', {
     method: 'POST',
@@ -1350,7 +1350,7 @@ function rCustomers(){
       },r.name+(r.id!=='all'?' ('+st.customers.filter(c=>c.roundId===r.id).length+')':''))),
       h('span',{style:{marginLeft:'auto',fontSize:'13px',color:'#888',alignSelf:'center'}},fil.length+' customer'+(fil.length!==1?'s':''))
     ),
-    h('input',{className:'fi',placeholder:'Search by name or address…',value:st.search,oninput:e=>{st.search=e.target.value;render();},style:{marginBottom:'14px'}}),
+    h('input',{className:'fi',placeholder:'Search by name or address…',value:st.search,oninput:e=>{st.search=e.target.value;const v=e.target.value;render();const el2=document.querySelector('input.fi[placeholder="Search by name or address…"]');if(el2){el2.focus();el2.setSelectionRange(v.length,v.length);}},style:{marginBottom:'14px'}}),
     h('div',{style:{display:'grid',gap:'10px'}},
       ...fil.map((c,i)=>{
         const r=st.rounds.find(x=>x.id===c.roundId);
@@ -2129,13 +2129,13 @@ function rModals(){
           const rpEnd=new Date(rpStart);rpEnd.setDate(rpEnd.getDate()+rpDays-1);
           st[periodKey]=fds(rpStart)+' – '+fds(rpEnd.toISOString().split('T')[0]);
         }
-        const html='<!DOCTYPE html><html><head><meta charset="utf-8"><style>'+css+'</style></head><body>'+buildInvoiceHTML(c)+'</body></html>';
+        const html='<!DOCTYPE html><html><head><meta charset="utf-8"><style>'+css+'</style></head><body>'+buildInvoiceHTML(c, isReprint)+'</body></html>';
         if(isReprint){st[startKey]=origStart;st[periodKey]=origPeriod;}
         doPrint(html);
       }
       function doEmailBill(){
         if(!c.email){alert('No email address on file for '+c.name+'.');return;}
-        sendBillViaSendGrid(c, isReprint?rpStart:undefined, isReprint?rpDays:undefined)
+        sendBillViaSendGrid(c, isReprint?rpStart:undefined, isReprint?rpDays:undefined, isReprint)
           .then(()=>{toast('✓ Invoice sent to '+c.email);st.showBillModal=null;st.reprintStart=null;st.reprintDays=28;render();})
           .catch(err=>{alert('⚠ Failed to send: '+err.message);});
       }
@@ -2430,7 +2430,7 @@ function newBlankWeek(){
     title, delQty:'', delPrice:'', retQty:'', retPrice:''
   }));
   return {
-    id: Date.now(),
+    id: uuidv4(),
     weekStart: fmt(mon),
     weekEnd: fmt(sun),
     invoiceNum: Date.now() % 100000,
@@ -2859,7 +2859,19 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
 
       // ── DAILY / SAT / SUN PAPERS ──────────────────────────────────
       h('div',{className:'card',style:{marginBottom:'16px',overflowX:'auto'}},
-        h('div',{className:'sd'},'📰 Daily Papers (Mon–Fri)'),
+        h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:'8px',marginBottom:'4px'}},
+          h('div',{className:'sd',style:{margin:'0'}},'📰 Daily Papers (Mon–Fri)'),
+          h('div',{style:{display:'flex',gap:'6px',alignItems:'center',flexWrap:'wrap'}},
+            h('span',{style:{fontSize:'11px',color:'#888',fontWeight:'bold',textTransform:'uppercase',letterSpacing:'.5px'}},'No papers this day:'),
+            ...['mon','tue','wed','thu','fri'].map(d=>
+              h('button',{className:'btn b6',style:{fontSize:'11px',padding:'3px 10px'},onclick:()=>{
+                if(!confirm('Zero out ALL English paper deliveries for '+d.charAt(0).toUpperCase()+d.slice(1)+'?\n\nThis removes del & ret quantities for every daily paper on that day.'))return;
+                wk.papers.forEach(p=>{if(p.weekPrice>0){p.days[d].del='';p.days[d].ret='';}});
+                save();render();toast('✓ '+d.charAt(0).toUpperCase()+d.slice(1)+' papers cleared');
+              }},d.charAt(0).toUpperCase()+d.slice(1))
+            )
+          )
+        ),
         h('table',{style:{width:'100%',borderCollapse:'collapse',fontSize:'13px'}},
           h('thead',{},
             h('tr',{style:{background:'#1a1a1a',color:'#c8a84b'}},

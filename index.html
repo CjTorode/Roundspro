@@ -219,7 +219,7 @@ const S={get:(k,fb)=>{try{const v=localStorage.getItem('cjt_'+k);return v?JSON.p
 const DB = {
   SETTINGS_KEYS: ['gstRate','gstEnabled','gstNumber','defaultDelivery','showCostPrice',
     'calEvents','billingStart','billingPeriod','billingStart2','billingPeriod2','bizDetails','lastWedCharge','billStyle',
-    'shopDiscountPaper','shopDiscountMag','shopEmail','sendgridKey'],
+    'shopDiscountPaper','shopDiscountMag','shopEmail','sendgridKey','noPaperDays'],
 
   async saveCustomers(){
     if(!getSB()) return;
@@ -597,6 +597,13 @@ const st={
   billingRoundFilter: 'all',
   reprintStart: null,
   reprintDays: 28,
+  // ── NO PAPER DAYS ────────────────────────────────────────────────
+  // Each entry: { date:'2026-05-26', gpOnly:true/false }
+  // gpOnly=true means GP still delivered that day, gpOnly=false = nothing at all
+  noPaperDays: S.get('noPaperDays', []),
+  showNoPaperModal: false,
+  newNoPaperDate: new Date().toISOString().split('T')[0],
+  newNoPaperGpOnly: true,
 };
 
 // ── HARDCODED LIST ORDER (set May 2026) ──────────────────────────
@@ -712,6 +719,20 @@ function priceOnDate(item, dateStr){
   return price;
 }
 
+// Returns the no-paper-day entry for a date, or null
+function getNoPaperDay(ds){
+  return (st.noPaperDays||[]).find(function(e){return e.date===ds;})||null;
+}
+// Is this an English-paper-free day? (GP may still run)
+function isNoPaperDay(ds){
+  return !!(st.noPaperDays||[]).find(function(e){return e.date===ds;});
+}
+// Is GP still delivered on this no-paper day?
+function isGpOnlyDay(ds){
+  const e=getNoPaperDay(ds);
+  return e?e.gpOnly:false;
+}
+
 function calcBill(c,start,days){
   const gst=st.gstEnabled?st.gstRate:0;
   const hd=start?holDays(c,start,days):0;
@@ -782,11 +803,14 @@ function calcBill(c,start,days){
     } else {
       // Daily paper — count days it was active
       const ddays=item.deliveryDays||[1,2,3,4,5];
+      const isGP=(item.title==='Guernsey Press');
       if(start){
         d2=0;blendedTotal=0;
         for(var i=0;i<days;i++){
           var dd=new Date(start);dd.setDate(dd.getDate()+i);
           var ds=dd.toISOString().split('T')[0];
+          // Skip if no-paper day: English papers skip entirely; GP skips only if not gpOnly
+          if(isNoPaperDay(ds)&&!(isGP&&isGpOnlyDay(ds)))continue;
           if(ddays.indexOf(dd.getDay())>=0&&!onHoliday(c,ds)){
             var activeThen=papersOnDate(c,ds);
             if(activeThen.indexOf(title)>=0){
@@ -1259,6 +1283,20 @@ function rDash(){
   return h('div',{},
     h('h2',{className:'st'},'Morning Summary'),
     isWed?h('div',{className:'a1',style:{marginBottom:'16px'}},`📰 It's Wednesday — weekly magazines auto-charged today: ${wm.map(m=>m.title).join(', ')||'none configured'}`):null,
+    (()=>{
+      const ts=tod();
+      const today=(st.noPaperDays||[]).find(e=>e.date===ts);
+      const recent=(st.noPaperDays||[]).filter(e=>e.date<ts&&e.date>=(()=>{const d=new Date(ts);d.setDate(d.getDate()-28);return d.toISOString().split('T')[0];})());
+      if(today)return h('div',{className:'a2',style:{marginBottom:'16px',fontWeight:'bold'}},
+        today.gpOnly?'🗞 TODAY marked as GP-only — English papers not charged. Guernsey Press charged as normal.'
+                    :'🚫 TODAY marked as no-paper day — no papers charged for anyone.'
+      );
+      if(recent.length)return h('div',{className:'a3',style:{marginBottom:'16px'}},
+        '📰 '+recent.length+' no-paper day'+(recent.length!==1?'s':'')+' in current cycle — billing adjusted automatically. '
+        +recent.map(e=>fd(e.date)+(e.gpOnly?' (GP only)':' (no papers)')).join(', ')+'.'
+      );
+      return null;
+    })(),
     h('div',{className:'g5',style:{marginBottom:'24px'}},
       sc2('👥','Customers',st.customers.length,'#1a1a1a'),
       sc2('🚲','Rounds',st.rounds.length,'#2a5e8e'),
@@ -1539,6 +1577,23 @@ function rBilling(){
 
   return h('div',{},
     h('h2',{className:'st'},'Billing & Payments'),
+    // No-paper days notice
+    (()=>{
+      const cycleStart=st.billingStart;
+      const cycleEnd=new Date(cycleStart);cycleEnd.setDate(cycleEnd.getDate()+27);
+      const cycleEndStr=cycleEnd.toISOString().split('T')[0];
+      const inCycle=(st.noPaperDays||[]).filter(e=>e.date>=cycleStart&&e.date<=cycleEndStr);
+      if(!inCycle.length)return null;
+      return h('div',{className:'a3',style:{marginBottom:'14px',padding:'12px 16px'}},
+        h('div',{style:{fontWeight:'bold',marginBottom:'6px',fontSize:'13px'}},'📰 No-Paper Days in Current Cycle — Bills Adjusted Automatically'),
+        h('div',{style:{display:'flex',flexWrap:'wrap',gap:'6px'}},
+          ...inCycle.map(e=>h('span',{style:{display:'inline-block',padding:'3px 10px',borderRadius:'3px',fontSize:'12px',fontWeight:'bold',
+            background:e.gpOnly?'#dce8dc':'#f0e0e0',color:e.gpOnly?'#2a5e2a':'#8a3030'}},
+            fd(e.date)+(e.gpOnly?' 🗞 GP only':' 🚫 No papers')
+          ))
+        )
+      );
+    })(),
     topBar,
     h('div',{className:'card',style:{marginBottom:'18px'}},
       h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',flexWrap:'wrap',gap:'12px'}},
@@ -2342,6 +2397,42 @@ function rModals(){
       lbl('Anthropic API Key'),
       h('input',{type:'password',className:'fi',value:localStorage.getItem('cjt_anthropicKey')||'',placeholder:'sk-ant-…',oninput:e=>{const v=e.target.value.trim();if(v)localStorage.setItem('cjt_anthropicKey',v);else localStorage.removeItem('cjt_anthropicKey');}}),
       h('div',{style:{fontSize:'11px',color:'#888',marginBottom:'12px'}},'Stored only in this browser — never sent anywhere except Anthropic.'),
+      h('div',{className:'sd'},'📰 No English Paper Days'),
+      h('div',{style:{fontSize:'13px',color:'#555',marginBottom:'10px'}},'Record days when English papers didn\'t arrive. Customer bills will automatically skip those papers. Tick "GP delivered" if the Guernsey Press still came that day.'),
+      // Add new entry
+      h('div',{style:{display:'flex',gap:'8px',alignItems:'flex-end',flexWrap:'wrap',marginBottom:'10px'}},
+        h('div',{},lbl('Date'),h('input',{type:'date',className:'fi',style:{marginBottom:'0',width:'155px'},value:st.newNoPaperDate,onchange:e=>st.newNoPaperDate=e.target.value})),
+        h('label',{style:{display:'flex',alignItems:'center',gap:'6px',fontSize:'13px',paddingBottom:'2px',cursor:'pointer'}},
+          h('input',{type:'checkbox',checked:st.newNoPaperGpOnly,onchange:e=>st.newNoPaperGpOnly=e.target.checked}),
+          '🗞 GP still delivered'
+        ),
+        h('button',{className:'btn b1',style:{padding:'9px 16px',fontSize:'13px'},onclick:()=>{
+          const d=st.newNoPaperDate;
+          if(!d){alert('Please pick a date.');return;}
+          const already=(st.noPaperDays||[]).find(e=>e.date===d);
+          if(already){alert('That date is already recorded.');return;}
+          st.noPaperDays=[...(st.noPaperDays||[]),{date:d,gpOnly:st.newNoPaperGpOnly}]
+            .sort((a,b)=>b.date.localeCompare(a.date));
+          ps('noPaperDays');render();toast('✓ No-paper day recorded: '+fd(d));
+        }},'+ Add')
+      ),
+      // List of recorded days
+      (st.noPaperDays||[]).length===0
+        ? h('div',{style:{fontSize:'13px',color:'#aaa',marginBottom:'12px'}},'No days recorded yet.')
+        : h('div',{style:{marginBottom:'12px'}},
+            ...(st.noPaperDays||[]).map(e=>
+              h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 10px',marginBottom:'5px',borderRadius:'4px',background:e.gpOnly?'#f3fff3':'#fff3f3',border:'1px solid '+(e.gpOnly?'#80a880':'#e08080')}},
+                h('div',{},
+                  h('span',{style:{fontWeight:'bold',fontSize:'13px'}},fd(e.date)),
+                  h('span',{style:{marginLeft:'10px',fontSize:'12px',color:'#555'}},e.gpOnly?'🗞 GP delivered only':'🚫 No papers at all')
+                ),
+                h('button',{style:{background:'none',border:'none',color:'#b94040',cursor:'pointer',fontSize:'16px'},onclick:()=>{
+                  st.noPaperDays=(st.noPaperDays||[]).filter(x=>x.date!==e.date);
+                  ps('noPaperDays');render();toast('✓ Removed '+fd(e.date));
+                }},'✕')
+              )
+            )
+          ),
       h('div',{className:'sd'},'🧾 Invoice Style'),
       h('div',{style:{fontSize:'13px',color:'#555',marginBottom:'10px'}},'Choose how customer bills are presented when printing or emailing.'),
       h('div',{style:{display:'flex',gap:'10px',marginBottom:'4px'}},

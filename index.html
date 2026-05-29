@@ -1547,6 +1547,16 @@ function rBilling(){
         }, r.name)
       ),
       h('div',{style:{marginLeft:'auto',display:'flex',gap:'8px',flexWrap:'wrap'}},
+        btn('b5',{style:{padding:'7px 16px',fontSize:'13px'}},'💾 Save PDF',()=>{
+          const custs = getBillingCusts();
+          if(!custs.length){alert('No customers in this selection.');return;}
+          const roundName = (st.billingRoundFilter&&st.billingRoundFilter!=='all')
+            ? (st.rounds.find(r=>r.id===st.billingRoundFilter)||{name:'Round'}).name.replace(/\s+/g,'')
+            : 'AllRounds';
+          const period = (st.billingPeriod||st.billingStart).replace(/\s+/g,'').replace(/–|-/g,'to');
+          const filename = 'RoundsPro-'+roundName+'-'+period+'.pdf';
+          saveCombinedPDF(custs, filename);
+        }),
         btn('b1',{style:{padding:'7px 16px',fontSize:'13px'}},'🖨 Print Bills',()=>{
           const custs = getBillingCusts();
           const toPrint = custs.filter(c=>!(c.email||'').trim());
@@ -1606,7 +1616,20 @@ function rBilling(){
         h('div',{style:{display:'flex',flexDirection:'column',gap:'8px',minWidth:'200px'}},
           btn('b5',{style:{fontSize:'13px'}},'✓ Close Round 1',()=>closeCycle('billingStart','billingPeriod')),
           btn('b4',{style:{fontSize:'13px'}},'✓ Close Round 2',()=>closeCycle('billingStart2','billingPeriod2')),
-          h('div',{style:{fontSize:'11px',color:'#aaa',textAlign:'center'}},'Bills each account then starts next cycle')
+          h('div',{style:{borderTop:'1px solid #555',paddingTop:'8px',display:'flex',flexDirection:'column',gap:'6px'}},
+            h('div',{style:{fontSize:'10px',color:'#aaa',textAlign:'center',textTransform:'uppercase',letterSpacing:'.5px',marginBottom:'2px'}},'💾 Archive before closing'),
+            h('button',{className:'btn',style:{background:'#2a5e2a',color:'#fff',padding:'7px 12px',fontSize:'12px',fontWeight:'bold',borderRadius:'3px'},onclick:()=>{
+              const r1custs=[...st.customers].filter(c=>c.roundId!=='round-2').sort((a,b)=>(a.listOrder||0)-(b.listOrder||0));
+              const period=(st.billingPeriod||st.billingStart).replace(/\s+/g,'').replace(/[–—]/g,'-');
+              saveCombinedPDF(r1custs,'RoundsPro-Round1-'+period+'.pdf');
+            }},'💾 Save Round 1 PDF'),
+            h('button',{className:'btn',style:{background:'#2a5e8e',color:'#fff',padding:'7px 12px',fontSize:'12px',fontWeight:'bold',borderRadius:'3px'},onclick:()=>{
+              const r2custs=[...st.customers].filter(c=>c.roundId==='round-2').sort((a,b)=>(a.listOrder||0)-(b.listOrder||0));
+              const period=(st.billingPeriod2||st.billingStart2).replace(/\s+/g,'').replace(/[–—]/g,'-');
+              saveCombinedPDF(r2custs,'RoundsPro-Round2-'+period+'.pdf');
+            }},'💾 Save Round 2 PDF')
+          ),
+          h('div',{style:{fontSize:'11px',color:'#aaa',textAlign:'center'}},'Save PDFs before closing cycle')
         )
       ),
       h('div',{style:{marginTop:'12px',paddingTop:'10px',borderTop:'1px solid #e8e0d0',display:'flex',gap:'20px',flexWrap:'wrap',alignItems:'flex-end'}},
@@ -2498,7 +2521,7 @@ const SHOP_MAGS_DEFAULT = [
   'Bella','Best','Chat','Closer','FIFA Classic Tins','FIFA Multipack','FIFA Starter Packs',
   'FIFA Stickers','FIFA Tins','Good Food','Heat','Hello!','Inside Soap',
   'Love It!','Motor Cycle News','My Weekly','Peoples Friend','Radio Times',
-  'Real People','TAB Mini Arrowords Collection','Take A Break',
+  'Real People','TAB Fiction Feast','TAB Mini Arrowords Collection','Take A Break',
   "That's Life Weekly",'Total TV Guide','TV & Streaming Weekly',
   'TV Choice','Whats On TV Weekly','Woman','Womans Own','Womans Weekly','Yours'
 ];
@@ -2755,27 +2778,41 @@ Magazines are listed BELOW the papers. Match these to full titles:
   Fifa Starter / FIFA Starter / Starter Pack      → FIFA Starter Packs
   Fifa Stickers / FIFA Stickers / Stickers        → FIFA Stickers
   Fifa Classic / FIFA Classic / Classic Tins      → FIFA Classic Tins
+  Yours / Yous                                    → Yours
+  TAB fiction feast / TAB Fiction / fiction feast / TAB Fict → TAB Fiction Feast
 
 ════════════════════════════════
 READING THE NUMBERS
 ════════════════════════════════
 
 PAPERS (top section):
-  Craig's format has TWO columns:
-  - LEFT column = delivery quantities, written immediately next to each title
-  - RIGHT column = returns quantities, written further to the right, stacked vertically
+  Craig's papers are always at the TOP of the page, BEFORE the magazines.
   
-  The returns column is SEPARATE from the titles — it is a vertical list of numbers
-  aligned to the right side of the page, corresponding to papers that have returns.
-  Papers with no returns simply have no number in the right column for that row.
+  IMPORTANT — PAPERS MAY BE IN ONE OR TWO COLUMNS:
+  
+  SINGLE COLUMN (most common):
+  All papers listed vertically down the left side, with delivery qty next to each title,
+  and a returns column stacked on the right side of the page.
+  
+  TWO COLUMN (used when short on space):
+  Papers are split across TWO side-by-side columns spanning the full width of the page.
+  Left column has some papers (e.g. Mirror, Mail, Sun, Exp) with their del qtys and returns.
+  Right column continues with more papers (e.g. Star, Times, The i, GP) with their del qtys and returns.
+  CRITICAL: When you see papers on BOTH the left AND right side of the top section,
+  read BOTH columns as papers. Do NOT treat the right column papers as magazines.
+  The magazines only start BELOW all the papers, after a clear gap.
+  
+  In both layouts:
+  - Delivery quantity is written immediately next to the title
+  - Returns are circled numbers (or plain numbers) to the right of the delivery qty
+  - Match each return number to the paper on the same horizontal row
+  - GP (Guernsey Press) is ALWAYS the last paper listed and has the highest delivery number (50-100+)
+  - Returns may not be circled yet — treat plain numbers in the returns position the same as circled ones
   
   On some days returns may be plain numbers (not circled).
   On other days some returns may be circled — treat circled and uncircled the same way.
   
-  To match returns to titles: count down the papers list and match each return number
-  to the paper on the same horizontal row.
-  
-  Example — if the page shows:
+  Example — single column:
     Mirr   7        6
     Mail   14       4
     Sun    7
@@ -2786,6 +2823,14 @@ PAPERS (top section):
     GP     114      50
   Then: Mirr del=7 ret=6, Mail del=14 ret=4, Sun del=7 ret=0, Exp del=7 ret=0,
         Star del=10 ret=4, Times del=1 ret=0, The i del=1 ret=0, GP del=114 ret=50
+
+  Example — two column layout:
+    Mirr  5   (1)  |  Star   6   (1)
+    Mail  5   (1)  |  Times  3   (2)
+    Sun   7   (4)  |  The i  1
+    Exp   4   (2)  |  GP     69  (37)
+  Then: Mirr del=5 ret=1, Mail del=5 ret=1, Sun del=7 ret=4, Exp del=4 ret=2,
+        Star del=6 ret=1, Times del=3 ret=2, The i del=1 ret=0, GP del=69 ret=37
   
   The page heading shows the day (e.g. "Tues 26 May" = tue, "Wed 27 May" = wed)
   All quantities on that page are for that single day.
@@ -2796,22 +2841,44 @@ MAGAZINES (lower section, below the papers):
   The numbers in the papers returns column (right side of papers section) must NOT
   be assigned to any magazine titles.
 
-  Craig's magazine format has these columns left to right:
+  Craig's magazine format — TWO possible layouts:
+  
+  LAYOUT A (standard, as seen on Wednesday):
   TITLE  [circled ret qty]  [del qty] — [del price]
-
   - The TITLE is on the left
-  - A CIRCLED number in the middle = returns quantity from LAST week
-  - Then: del_qty — del_price (e.g. "6 — 270" means del_qty=6, del_price=2.70)
-  - Prices are written without decimal points: 270 = 2.70, 245 = 2.45, 190 = 1.90, 750 = 7.50, 1099 = 10.99
-  - If no circled number, ret_qty = 0
-  - The circled numbers are stacked vertically and belong to the magazine on the SAME ROW
+  - A CIRCLED number = returns quantity from last week
+  - Then: del_qty — del_price
 
-  Examples from Craig's actual sheets:
+  LAYOUT B (compact, as seen on Thursday):
+  TITLE  [ret qty]  /  [del qty]  —  [del price]
+  - The TITLE is on the left
+  - A plain or circled number on the left = returns quantity
+  - A slash "/" separates returns from delivery
+  - Then: del_qty — del_price
+  - Example: "Bella  2 / 5 — 180" means ret_qty=2, del_qty=5, del_price=1.80
+  - Example: "TAB  8 / 14 — 145" means ret_qty=8, del_qty=14, del_price=1.45
+  - If no number before the slash, ret_qty=0
+  - If no slash at all, treat the number as del_qty and ret_qty=0
+
+  In BOTH layouts:
+  - Prices are written without decimal points: 270=2.70, 245=2.45, 190=1.90, 750=7.50, 1099=10.99, 350=3.50, 299=2.99, 145=1.45, 320=3.20, 425=4.25, 450=4.50, 99=0.99, 350=3.50, 235=2.35, 550=5.50, 110=1.10, 380=3.80, 85=0.85, 88=0.88, 199=1.99, 230=2.30, 180=1.80
+  - If no return number present, ret_qty=0
+
+  Examples — Layout A (standard):
     "P.Friend  (4)  6 — 270"  → title=Peoples Friend, ret_qty=4, del_qty=6, del_price=2.70
     "Woman     (7)  4 — 245"  → title=Woman, ret_qty=7, del_qty=4, del_price=2.45
     "W.Own     (1)  6 — 190"  → title=Womans Own, ret_qty=1, del_qty=6, del_price=1.90
     "Pls Multipack  4 — 750"  → title=FIFA Multipack, ret_qty=0, del_qty=4, del_price=7.50
     "FIFA Tins      5 — 1099" → title=FIFA Tins, ret_qty=0, del_qty=5, del_price=10.99
+
+  Examples — Layout B (slash format):
+    "Bella      2 / 5 — 180"  → title=Bella, ret_qty=2, del_qty=5, del_price=1.80
+    "Best       3 / 4 — 299"  → title=Best, ret_qty=3, del_qty=4, del_price=2.99
+    "Chat       4 / 7 — 145"  → title=Chat, ret_qty=4, del_qty=7, del_price=1.45
+    "TAB        8 / 14 — 145" → title=Take A Break, ret_qty=8, del_qty=14, del_price=1.45
+    "TV Choice  6   36 — 85"  → title=TV Choice, ret_qty=6, del_qty=36, del_price=0.85
+    "TAB fiction feast 3  9 — 350" → title=TAB Fiction Feast, ret_qty=3, del_qty=9, del_price=3.50
+    "Yours      3 / 5 — 230"  → title=Yours, ret_qty=3, del_qty=5, del_price=2.30
 
   NOTE: "Woman" and "W.Own" (Womans Own) are TWO DIFFERENT titles — do not confuse them.
   "Woman" abbreviation = Woman magazine (del_qty usually 4-6)
@@ -3178,6 +3245,9 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
           const html = shopInvoiceHTML(wk, biz);
           doPrint(html);
         }},'🖨 Print Invoice'),
+        h('button',{className:'btn b2',style:{background:'#2a5e2a',color:'#fff'},onclick:()=>{
+          saveShopPDF(wk);
+        }},'💾 Save PDF'),
         h('button',{className:'btn b4',onclick:()=>{
           const html = shopInvoiceHTML(wk, biz);
           const blob = new Blob([html],{type:'text/html'});
@@ -3302,7 +3372,49 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
   );
 }
 
-// ── MAIN RENDER ───────────────────────────────────────────────────
+// ── SAVE COMBINED PDF ────────────────────────────────────────────
+function saveCombinedPDF(custList, filename){
+  if(!custList.length){alert('No customers to save.');return;}
+  const css = getInvoiceCSS();
+  const pages = custList.map(function(c,i){
+    const body = buildInvoiceHTML(c);
+    return body + (i < custList.length-1 ? '<div style="page-break-after:always"></div>' : '');
+  });
+  // Cover sheet at the front
+  const biz = st.bizDetails;
+  const now = new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});
+  const cover = '<div style="text-align:center;padding:60px 20px;font-family:Georgia,serif">'
+    +'<div style="font-size:36px;margin-bottom:12px">🗞</div>'
+    +'<div style="font-size:24px;font-weight:bold;letter-spacing:2px;margin-bottom:6px">'+(biz.name||'C J TORODE')+'</div>'
+    +'<div style="font-size:13px;color:#888;letter-spacing:3px;text-transform:uppercase;margin-bottom:24px">Customer Invoice Records</div>'
+    +'<div style="font-size:16px;font-weight:bold;margin-bottom:8px">'+filename.replace('RoundsPro-','').replace('.pdf','').replace(/-/g,' ')+'</div>'
+    +'<div style="font-size:13px;color:#555">Saved: '+now+'</div>'
+    +'<div style="font-size:13px;color:#555;margin-top:8px">'+custList.length+' customer'+(custList.length!==1?'s':'')+' · Total: £'+custList.reduce(function(s,c){return s+calcBill(c,getBillingStart(c),28).grandTotal;},0).toFixed(2)+'</div>'
+    +'<div style="margin-top:40px;font-size:11px;color:#aaa">When the print dialog opens — select "Save as PDF" and save to your RoundsPro Records folder</div>'
+    +'</div><div style="page-break-after:always"></div>';
+  const html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+filename+'</title>'
+    +'<style>'+css+'</style></head><body>'+cover+pages.join('')+'</body></html>';
+  // Open in new window so user can Save as PDF from print dialog
+  const w = window.open('','_blank');
+  if(!w){alert('Please allow pop-ups for this site, then try again.');return;}
+  const printHtml = html.replace('</body>','<script>window.onload=function(){setTimeout(function(){window.print();},400);}<\/script></body>');
+  w.document.open();w.document.write(printHtml);w.document.close();
+  toast('📄 '+filename+' — choose "Save as PDF" in the print dialog');
+}
+
+function saveShopPDF(wk){
+  if(!wk){alert('No shop week selected.');return;}
+  const biz = st.bizDetails;
+  const html = shopInvoiceHTML(wk, biz);
+  const filename = 'Shop-Invoice-'+wk.invoiceNum+'-'+wk.weekEnd+'.pdf';
+  const w = window.open('','_blank');
+  if(!w){alert('Please allow pop-ups for this site, then try again.');return;}
+  const printHtml = html.replace('</body>','<script>window.onload=function(){setTimeout(function(){window.print();},400);}<\/script></body>');
+  w.document.open();w.document.write(printHtml);w.document.close();
+  toast('📄 '+filename+' — choose "Save as PDF" in the print dialog');
+}
+
+
 function render(){
   const app=document.getElementById('app');app.innerHTML='';
   const tabs=isDriver()?[{k:'customers',i:'👥',l:'Customers'},{k:'rounds',i:'🚲',l:'Rounds'},{k:'billing',i:'£',l:'Billing'}]:[{k:'dashboard',i:'⊞',l:'Dashboard'},{k:'customers',i:'👥',l:'Customers'},{k:'rounds',i:'🚲',l:'Rounds'},{k:'billing',i:'£',l:'Billing'},{k:'stock',i:'📦',l:'Stock'},{k:'calendar',i:'📅',l:'Calendar'},{k:'shop',i:'🏪',l:'Shop'}];

@@ -2941,20 +2941,42 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
               return na.includes(nb) || nb.includes(na);
             }
 
+            // Smart merge helper — only update a field if:
+            // 1. The new value is not null
+            // 2. The new value is not zero/empty when the existing value is already set
+            // This makes rescanning safe — a second scan only ADDS new info, never clears existing data
+            function safeUpdate(existing, newVal){
+              if(newVal == null) return existing; // null = AI couldn't read it, keep existing
+              const newStr = String(newVal);
+              const existingStr = String(existing||'');
+              if(existingStr !== '' && existingStr !== '0' && (newStr === '0' || newStr === '')) return existing; // never overwrite real data with zero
+              return newStr;
+            }
+
             // Merge papers
+            let paperUpdates = 0;
             if(parsed.papers){
               parsed.papers.forEach(sp => {
                 const wp = wk.papers.find(p => fuzzyMatch(p.title, sp.title));
                 if(!wp) return;
                 ['mon','tue','wed','thu','fri','sat','sun'].forEach(d => {
-                  if(sp[d+'_del'] != null) wp.days[d].del = String(sp[d+'_del']);
-                  if(sp[d+'_ret'] != null) wp.days[d].ret = String(sp[d+'_ret']);
+                  const newDel = sp[d+'_del'];
+                  const newRet = sp[d+'_ret'];
+                  if(newDel != null){
+                    const updated = safeUpdate(wp.days[d].del, newDel);
+                    if(updated !== String(wp.days[d].del||'')){ wp.days[d].del = updated; paperUpdates++; }
+                  }
+                  if(newRet != null){
+                    const updated = safeUpdate(wp.days[d].ret, newRet);
+                    if(updated !== String(wp.days[d].ret||'')){ wp.days[d].ret = updated; paperUpdates++; }
+                  }
                 });
               });
             }
 
             // Merge magazines — only update magazines that have BOTH del_qty AND del_price
             // This prevents paper return numbers bleeding into magazine rows
+            let magUpdates = 0;
             const knownMagTitles = wk.mags.map(m => m.title);
             if(parsed.mags){
               parsed.mags.forEach(sm => {
@@ -2972,18 +2994,28 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
                   wk.mags.push(wm);
                   wk.mags.sort((a,b)=>a.title.localeCompare(b.title));
                 }
-                if(sm.del_qty != null) wm.delQty = String(sm.del_qty);
-                if(sm.del_price != null) wm.delPrice = String(sm.del_price);
-                if(sm.ret_qty != null && sm.ret_qty > 0) wm.retQty = String(sm.ret_qty);
-                if(sm.ret_price != null) wm.retPrice = String(sm.ret_price);
-                // If returns exist but no separate ret_price, fall back to del_price
-                if(sm.ret_qty > 0 && !sm.ret_price && sm.del_price) wm.retPrice = String(sm.del_price);
+                // Smart merge — never overwrite existing real data with zero
+                const prevDelQty = wm.delQty;
+                const prevDelPrice = wm.delPrice;
+                const prevRetQty = wm.retQty;
+                const prevRetPrice = wm.retPrice;
+                wm.delQty   = safeUpdate(wm.delQty,   sm.del_qty);
+                wm.delPrice = safeUpdate(wm.delPrice,  sm.del_price);
+                wm.retQty   = safeUpdate(wm.retQty,   sm.ret_qty != null && sm.ret_qty > 0 ? sm.ret_qty : (wm.retQty||null));
+                wm.retPrice = safeUpdate(wm.retPrice,  sm.ret_price);
+                // If returns exist but no separate ret_price, fall back to del_price only if retPrice not already set
+                if(sm.ret_qty > 0 && !sm.ret_price && sm.del_price && !wm.retPrice) wm.retPrice = String(sm.del_price);
+                if(wm.delQty!==prevDelQty||wm.delPrice!==prevDelPrice||wm.retQty!==prevRetQty||wm.retPrice!==prevRetPrice) magUpdates++;
               });
             }
 
             save();
             if(toastEl) toastEl.style.display='none';
-            toast('✓ Scan complete — saving to cloud…');
+            const summaryParts = [];
+            if(paperUpdates > 0) summaryParts.push(paperUpdates+' paper field'+(paperUpdates!==1?'s':''));
+            if(magUpdates > 0) summaryParts.push(magUpdates+' mag'+(magUpdates!==1?'s':''));
+            const summary = summaryParts.length ? ' — updated '+summaryParts.join(' & ') : ' — no new data found';
+            toast('✓ Scan complete'+summary+'. Saving…');
             try {
               await DB.saveShopWeeks();
               toast('✓ Saved — other devices will update within 15 seconds');

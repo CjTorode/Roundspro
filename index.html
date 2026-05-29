@@ -324,14 +324,17 @@ const DB = {
         week_start: w.weekStart || null,
         week_end: w.weekEnd || null,
         invoice_num: String(w.invoiceNum || ''),
-        papers: w.papers || [],
-        mags: w.mags || [],
+        papers: JSON.stringify(w.papers || []),
+        mags: JSON.stringify(w.mags || []),
         overdue: parseFloat(w.overdue) || 0,
         vouchers: parseFloat(w.vouchers) || 0,
         note: w.note || '',
       }));
       await sbUpsert('shop_weeks', rows);
-    } catch(e){ console.warn('saveShopWeeks:', e.message); }
+    } catch(e){
+      console.warn('saveShopWeeks:', e.message);
+      toast('⚠ Shop sync failed: ' + e.message);
+    }
   },
 
   async deleteShopWeek(id){
@@ -2482,8 +2485,17 @@ function rModals(){
         getSB()
           ? h('div',{},
               h('div',{style:{fontSize:'13px',color:'#2a5e2a',marginBottom:'8px'}},'✓ Connected — data syncs automatically.'),
-              h('div',{style:{display:'flex',gap:'8px',marginBottom:'4px'}},
+              h('div',{style:{display:'flex',gap:'8px',marginBottom:'4px',flexWrap:'wrap'}},
                 btn('b1',{style:{flex:'1'}},'☁ Force Sync Now',async ()=>{toast('Syncing…');await DB.load();}),
+                btn('b4',{style:{flex:'1'}},'🏪 Push Shop Weeks',async ()=>{
+                  toast('Pushing shop weeks…');
+                  try{
+                    await DB.saveShopWeeks();
+                    toast('✓ Shop weeks pushed to cloud — other devices will update within 15 seconds');
+                  }catch(e){
+                    toast('⚠ Push failed: '+e.message);
+                  }
+                }),
                 btn('b3','Disconnect',()=>{if(confirm('Disconnect Supabase? App will use localStorage only.')){localStorage.removeItem('cjt_sbUrl');localStorage.removeItem('cjt_sbKey');_sb=null;render();toast('Disconnected from Supabase');}})
               )
             )
@@ -2680,7 +2692,10 @@ function rShop(){
   if(st.shopEditWeek !== null){
     const wk = st.shopWeeks.find(w => w.id === st.shopEditWeek);
     if(!wk){ st.shopEditWeek = null; render(); return h('div',{}); }
-    const save = () => { DB.saveShopWeeks(); };
+    const save = () => { 
+      S.set('shopWeeks', st.shopWeeks); // immediate local save
+      DB.saveShopWeeks().catch(e => toast('⚠ Sync error: ' + e.message));
+    };
     const days = ['mon','tue','wed','thu','fri','sat','sun'];
     const dayLabels = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
     const c = shopCalcWeek(wk);
@@ -2729,8 +2744,18 @@ function rShop(){
                     {type:'text',text:`This is a handwritten newsagent weekly supply/delivery sheet written by Craig Torode, Guernsey. Read it carefully using ALL of the following rules.
 
 ════════════════════════════════
-PAPER TITLE ABBREVIATIONS
+CROSSED OUT / SCRIBBLED NUMBERS
 ════════════════════════════════
+Craig sometimes crosses out numbers that were written in error (wrong day etc).
+CRITICAL RULES for crossed out content:
+- Any number that is crossed out, scribbled over, or heavily overwritten = treat as if it does not exist
+- Use null for that field, NOT the crossed-out value
+- Do NOT let crossed-out numbers in the returns column affect your reading of delivery quantities
+- If the entire returns column appears crossed out or scribbled, simply set all ret values to null for that day
+- A crossed out returns column does NOT mean the delivery quantities are wrong — read deliveries normally
+- Crossed out numbers may look like: a number with lines through it, a heavily scribbled circle, or a number overwritten multiple times
+
+
 The papers section is always at the TOP of the page. Match these handwritten abbreviations to the correct full title:
 
   Mirs / Mirr / Mirrr / Mirror        → Mirror
@@ -2808,6 +2833,8 @@ PAPERS (top section):
   - Match each return number to the paper on the same horizontal row
   - GP (Guernsey Press) is ALWAYS the last paper listed and has the highest delivery number (50-100+)
   - Returns may not be circled yet — treat plain numbers in the returns position the same as circled ones
+  - If returns appear crossed out or scribbled, set ret to null — this does NOT affect delivery quantities
+  - Always read delivery quantities regardless of what the returns column looks like
   
   On some days returns may be plain numbers (not circled).
   On other days some returns may be circled — treat circled and uncircled the same way.

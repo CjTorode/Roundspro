@@ -1644,7 +1644,57 @@ function rBilling(){
       );
     })(),
     topBar,
-    h('div',{className:'card',style:{marginBottom:'18px'}},
+    // ── EMAIL SUMMARY PANEL ──────────────────────────────────────
+    (()=>{
+      const allC = isDriver()?st.customers.filter(c=>c.roundId==='round-2'):st.customers;
+      const withEmail = allC.filter(c=>c.email);
+      const noEmail = allC.filter(c=>!c.email);
+      const unassigned = withEmail.filter(c=>!c.roundId);
+      if(!withEmail.length) return null;
+
+      // Group by round
+      const byRound = st.rounds.map(r=>({
+        round: r,
+        email: withEmail.filter(c=>c.roundId===r.id),
+        print: noEmail.filter(c=>c.roundId===r.id)
+      }));
+
+      return h('div',{className:'card',style:{marginBottom:'16px'}},
+        h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'12px'}},
+          h('div',{className:'ct',style:{margin:'0'}},'📧 Email & Print Summary'),
+          h('span',{style:{fontSize:'12px',color:'#888'}},withEmail.length+' email · '+noEmail.length+' print')
+        ),
+        h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))',gap:'12px'}},
+          ...byRound.map(({round,email,print})=>
+            h('div',{style:{border:'1px solid #e8e0d0',borderRadius:'4px',padding:'12px'}},
+              h('div',{style:{fontWeight:'bold',fontSize:'13px',marginBottom:'8px',paddingBottom:'6px',borderBottom:'1px solid #e8e0d0'}},
+                '🚲 '+round.name
+              ),
+              email.length?h('div',{style:{marginBottom:'8px'}},
+                h('div',{style:{fontSize:'11px',color:'#5a7ec8',fontWeight:'bold',textTransform:'uppercase',letterSpacing:'.5px',marginBottom:'4px'}},'📧 Email ('+email.length+')'),
+                ...email.map(c=>h('div',{style:{fontSize:'12px',padding:'3px 0',borderBottom:'1px solid #f5f0e8',display:'flex',justifyContent:'space-between'}},
+                  h('span',{style:{fontWeight:'bold'}},c.name),
+                  h('span',{style:{color:'#888',fontSize:'11px'}},c.email)
+                ))
+              ):null,
+              print.length?h('div',{},
+                h('div',{style:{fontSize:'11px',color:'#888',fontWeight:'bold',textTransform:'uppercase',letterSpacing:'.5px',marginBottom:'4px'}},'🖨 Print ('+print.length+')'),
+                h('div',{style:{fontSize:'12px',color:'#666'}},print.map(c=>c.name).join(', '))
+              ):null
+            )
+          ),
+          // Unassigned customers with email
+          unassigned.length?h('div',{style:{border:'1px solid #e08080',borderRadius:'4px',padding:'12px',background:'#fff3f3'}},
+            h('div',{style:{fontWeight:'bold',fontSize:'13px',marginBottom:'8px',paddingBottom:'6px',borderBottom:'1px solid #e8d0d0',color:'#b94040'}},'⚠ No Round Assigned'),
+            h('div',{style:{fontSize:'12px',color:'#888',marginBottom:'6px'}},'These customers have emails but aren\'t on a round — they\'re included in "All" count but not in Round 1 or Round 2 totals.'),
+            ...unassigned.map(c=>h('div',{style:{fontSize:'12px',padding:'3px 0',borderBottom:'1px solid #f5f0e8',display:'flex',justifyContent:'space-between'}},
+              h('span',{style:{fontWeight:'bold',color:'#b94040'}},c.name),
+              h('span',{style:{color:'#888',fontSize:'11px'}},c.email)
+            ))
+          ):null
+        )
+      );
+    })(),
       h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',flexWrap:'wrap',gap:'12px'}},
         h('div',{},
           h('div',{style:{fontSize:'11px',textTransform:'uppercase',letterSpacing:'1px',color:'#888',marginBottom:'4px'}},'Current 4-Week Billing Cycle'),

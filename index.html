@@ -3071,10 +3071,19 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
                 const prevDelPrice = wm.delPrice;
                 const prevRetQty = wm.retQty;
                 const prevRetPrice = wm.retPrice;
-                wm.delQty   = safeUpdate(wm.delQty,   sm.del_qty);
-                wm.delPrice = safeUpdate(wm.delPrice,  sm.del_price);
-                wm.retQty   = safeUpdate(wm.retQty,   sm.ret_qty != null && sm.ret_qty > 0 ? sm.ret_qty : (wm.retQty||null));
-                wm.retPrice = safeUpdate(wm.retPrice,  sm.ret_price);
+                // For quantities — ADD to existing rather than replace (multiple delivery days)
+                if(sm.del_qty != null && sm.del_qty > 0){
+                  const existing = parseFloat(wm.delQty)||0;
+                  wm.delQty = String(existing + sm.del_qty);
+                }
+                // For price — use latest price (may change between deliveries)
+                if(sm.del_price != null && sm.del_price > 0) wm.delPrice = String(sm.del_price);
+                // For returns — ADD to existing
+                if(sm.ret_qty != null && sm.ret_qty > 0){
+                  const existingRet = parseFloat(wm.retQty)||0;
+                  wm.retQty = String(existingRet + sm.ret_qty);
+                }
+                if(sm.ret_price != null && sm.ret_price > 0) wm.retPrice = String(sm.ret_price);
                 // If returns exist but no separate ret_price, fall back to del_price only if retPrice not already set
                 if(sm.ret_qty > 0 && !sm.ret_price && sm.del_price && !wm.retPrice) wm.retPrice = String(sm.del_price);
                 if(wm.delQty!==prevDelQty||wm.delPrice!==prevDelPrice||wm.retQty!==prevRetQty||wm.retPrice!==prevRetPrice) magUpdates++;
@@ -3095,13 +3104,13 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
                 });
                 return merged;
               });
-              // Merge mags — update existing, add new
+              // Merge mags — add quantities, don't replace
               wk.mags.forEach(wm => {
                 const cm = currentWk.mags.find(m => m.title === wm.title);
                 if(cm){
-                  if(wm.delQty) cm.delQty = wm.delQty;
-                  if(wm.delPrice) cm.delPrice = wm.delPrice;
-                  if(wm.retQty) cm.retQty = wm.retQty;
+                  if(wm.delQty) cm.delQty = String((parseFloat(cm.delQty)||0) + (parseFloat(wm.delQty)||0));
+                  if(wm.delPrice) cm.delPrice = wm.delPrice; // use latest price
+                  if(wm.retQty) cm.retQty = String((parseFloat(cm.retQty)||0) + (parseFloat(wm.retQty)||0));
                   if(wm.retPrice) cm.retPrice = wm.retPrice;
                 } else if(wm.delQty) {
                   currentWk.mags.push(wm);

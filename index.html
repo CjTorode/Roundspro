@@ -420,6 +420,10 @@ const DB = {
         const incoming = shopWks.map(r => {
           let papers = r.papers || [];
           let mags = r.mags || [];
+          // jsonb comes back already parsed; text comes back as string â€” handle both
+          if(typeof papers === 'string'){ try{ papers = JSON.parse(papers); }catch(e){ papers = []; } }
+          if(typeof mags === 'string'){ try{ mags = JSON.parse(mags); }catch(e){ mags = []; } }
+          // If still a string-within-object (double encoded), parse again
           if(typeof papers === 'string'){ try{ papers = JSON.parse(papers); }catch(e){ papers = []; } }
           if(typeof mags === 'string'){ try{ mags = JSON.parse(mags); }catch(e){ mags = []; } }
           return {
@@ -542,7 +546,7 @@ async function startApp(){
   await DB.load(); // Fetch fresh from Supabase
   // Auto-sync every 15 seconds (silent)
   setInterval(async () => {
-    if(getSB()){
+    if(getSB() && !DB._scanInProgress){
       DB._silent = true;
       await DB.load();
     }
@@ -2741,6 +2745,8 @@ function rShop(){
         const file = e.target.files[0]; if(!file) return;
         const toastEl = document.getElementById('scan-toast');
         if(toastEl) toastEl.style.display='block';
+        // Pause auto-sync during scan to prevent stale reference overwrites
+        DB._scanInProgress = true;
         const reader = new FileReader();
         reader.onload = async ev => {
           // Compress image aggressively to stay under Netlify 6MB limit
@@ -3068,7 +3074,15 @@ Use null for any value you cannot read clearly. Never invent or guess a price â€
               });
             }
 
+            // Re-find wk in case st.shopWeeks was updated during scan
+            const currentWk = st.shopWeeks.find(w => String(w.id) === String(wk.id));
+            if(currentWk){
+              // Copy scan results from wk into currentWk
+              currentWk.papers = wk.papers;
+              currentWk.mags = wk.mags;
+            }
             save();
+            DB._scanInProgress = false;
             if(toastEl) toastEl.style.display='none';
             const summaryParts = [];
             if(paperUpdates > 0) summaryParts.push(paperUpdates+' paper field'+(paperUpdates!==1?'s':''));
@@ -3083,6 +3097,7 @@ Use null for any value you cannot read clearly. Never invent or guess a price â€
             }
             render();
           } catch(err) {
+            DB._scanInProgress = false;
             if(toastEl) toastEl.style.display='none';
             toast('âš  Scan failed: ' + err.message);
           }

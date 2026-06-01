@@ -544,13 +544,13 @@ async function startApp(){
   st.customers = S.get('customers', IR ? [] : []);
   render(); // Show app immediately
   await DB.load(); // Fetch fresh from Supabase
-  // Auto-sync every 15 seconds (silent)
+  // Auto-sync every 30 seconds (silent)
   setInterval(async () => {
     if(getSB() && !DB._scanInProgress){
       DB._silent = true;
       await DB.load();
     }
-  }, 15000);
+  }, 30000);
 }
 
 const IR=[];
@@ -2578,7 +2578,7 @@ function rModals(){
                   toast('Pushing shop weeks…');
                   try{
                     await DB.saveShopWeeks();
-                    toast('✓ Shop weeks pushed to cloud — other devices will update within 15 seconds');
+                    toast('✓ Shop weeks pushed to cloud — other devices will update within 30 seconds');
                   }catch(e){
                     toast('⚠ Push failed: '+e.message);
                   }
@@ -2783,6 +2783,10 @@ function rShop(){
       S.set('shopWeeks', st.shopWeeks); // immediate local save
       DB.saveShopWeeks().catch(e => toast('⚠ Sync error: ' + e.message));
     };
+    // Debounced render — waits 600ms after last keystroke so inputs don't lose focus mid-typing
+    let _shopRenderTimer = null;
+    const dRender = () => { clearTimeout(_shopRenderTimer); _shopRenderTimer = setTimeout(()=>render(), 600); };
+    const saveRender = () => { save(); dRender(); };
     const days = ['mon','tue','wed','thu','fri','sat','sun'];
     const dayLabels = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
     const c = shopCalcWeek(wk);
@@ -3147,17 +3151,16 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
                 const prevDelPrice = wm.delPrice;
                 const prevRetQty = wm.retQty;
                 const prevRetPrice = wm.retPrice;
-                // For quantities — ADD to existing rather than replace (multiple delivery days)
+                // For quantities — ADD to existing for deliveries (can span multiple delivery days)
                 if(sm.del_qty != null && sm.del_qty > 0){
                   const existing = parseFloat(wm.delQty)||0;
                   wm.delQty = String(existing + sm.del_qty);
                 }
                 // For price — use latest price (may change between deliveries)
                 if(sm.del_price != null && sm.del_price > 0) wm.delPrice = String(sm.del_price);
-                // For returns — ADD to existing
+                // For returns — REPLACE not add: returns are a single weekly figure, rescanning to update prices should overwrite
                 if(sm.ret_qty != null && sm.ret_qty > 0){
-                  const existingRet = parseFloat(wm.retQty)||0;
-                  wm.retQty = String(existingRet + sm.ret_qty);
+                  wm.retQty = String(sm.ret_qty);
                 }
                 if(sm.ret_price != null && sm.ret_price > 0) wm.retPrice = String(sm.ret_price);
                 // If returns exist but no separate ret_price, fall back to del_price only if retPrice not already set
@@ -3180,16 +3183,17 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
                 });
                 return merged;
               });
-              // Merge mags — add quantities, don't replace
+              // Merge mags — wk already has the correctly accumulated totals from the
+              // scan merge above, so just assign (don't add again — that caused double-counting)
               wk.mags.forEach(wm => {
                 const cm = currentWk.mags.find(m => m.title === wm.title);
                 if(cm){
-                  if(wm.delQty) cm.delQty = String((parseFloat(cm.delQty)||0) + (parseFloat(wm.delQty)||0));
-                  if(wm.delPrice) cm.delPrice = wm.delPrice; // use latest price
-                  if(wm.retQty) cm.retQty = String((parseFloat(cm.retQty)||0) + (parseFloat(wm.retQty)||0));
+                  if(wm.delQty) cm.delQty = wm.delQty; // already accumulated above
+                  if(wm.delPrice) cm.delPrice = wm.delPrice;
+                  if(wm.retQty !== undefined) cm.retQty = wm.retQty; // already accumulated above
                   if(wm.retPrice) cm.retPrice = wm.retPrice;
                 } else if(wm.delQty) {
-                  currentWk.mags.push(wm);
+                  currentWk.mags.push({...wm});
                   currentWk.mags.sort((a,b)=>a.title.localeCompare(b.title));
                 }
               });
@@ -3204,7 +3208,7 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
             toast('✓ Scan complete'+summary+'. Saving…');
             try {
               await DB.saveShopWeeks();
-              toast('✓ Saved — other devices will update within 15 seconds');
+              toast('✓ Saved — other devices will update within 30 seconds');
             } catch(e) {
               toast('⚠ Cloud save failed: ' + e.message);
             }
@@ -3295,11 +3299,9 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
                 h('td',{style:{padding:'4px 8px',textAlign:'center',color:'#555'}},p.weekPrice.toFixed(2)),
                 ...['mon','tue','wed','thu','fri'].flatMap(d => [
                   h('td',{style:{padding:'2px 3px'}},
-                    h('input',{type:'number',min:'0',style:{width:'44px',padding:'4px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px',background:p.days[d].del?'#fff':'#fafafa'},value:p.days[d].del,oninput:ev=>{p.days[d].del=ev.target.value;save();render();}})
-                  ),
+                    h('input',{type:'number',min:'0',style:{width:'44px',padding:'4px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px',background:p.days[d].del?'#fff':'#fafafa'},value:p.days[d].del,oninput:ev=>{p.days[d].del=ev.target.value;saveRender();}})                  ),
                   h('td',{style:{padding:'2px 3px'}},
-                    h('input',{type:'number',min:'0',style:{width:'44px',padding:'4px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px',background:p.days[d].ret?'#fffbe6':'#fafafa'},value:p.days[d].ret,oninput:ev=>{p.days[d].ret=ev.target.value;save();render();}})
-                  )
+                    h('input',{type:'number',min:'0',style:{width:'44px',padding:'4px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px',background:p.days[d].ret?'#fffbe6':'#fafafa'},value:p.days[d].ret,oninput:ev=>{p.days[d].ret=ev.target.value;saveRender();}})                  )
                 ]),
                 h('td',{style:{padding:'4px 8px',textAlign:'right',color:net<0?'#b94040':'#2a5e2a',fontWeight:'bold'}},net),
                 h('td',{style:{padding:'4px 8px',textAlign:'right',fontWeight:'bold'}},rowTotal===0?'—':'£'+rowTotal.toFixed(2))
@@ -3332,8 +3334,8 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
               return h('tr',{style:{background:pi%2===0?'#fff':'#fafafa'}},
                 h('td',{style:{padding:'4px 8px',fontWeight:'bold'}},p.title),
                 h('td',{style:{padding:'4px 8px',textAlign:'center',color:'#555'}},p.satPrice.toFixed(2)),
-                h('td',{style:{padding:'2px 4px'}},h('input',{type:'number',min:'0',style:{width:'60px',padding:'5px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px',background:p.days.sat.del?'#fff':'#fafafa'},value:p.days.sat.del,oninput:ev=>{p.days.sat.del=ev.target.value;save();render();}})),
-                h('td',{style:{padding:'2px 4px'}},h('input',{type:'number',min:'0',style:{width:'60px',padding:'5px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px',background:p.days.sat.ret?'#fffbe6':'#fafafa'},value:p.days.sat.ret,oninput:ev=>{p.days.sat.ret=ev.target.value;save();render();}})),
+                h('td',{style:{padding:'2px 4px'}},h('input',{type:'number',min:'0',style:{width:'60px',padding:'5px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px',background:p.days.sat.del?'#fff':'#fafafa'},value:p.days.sat.del,oninput:ev=>{p.days.sat.del=ev.target.value;saveRender();}})),
+                h('td',{style:{padding:'2px 4px'}},h('input',{type:'number',min:'0',style:{width:'60px',padding:'5px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px',background:p.days.sat.ret?'#fffbe6':'#fafafa'},value:p.days.sat.ret,oninput:ev=>{p.days.sat.ret=ev.target.value;saveRender();}})),
                 h('td',{style:{padding:'4px 8px',textAlign:'right',fontWeight:'bold',color:net<0?'#b94040':'#2a5e2a'}},net),
                 h('td',{style:{padding:'4px 8px',textAlign:'right',fontWeight:'bold'}},(net*p.satPrice)===0?'—':'£'+(net*p.satPrice).toFixed(2))
               );
@@ -3365,8 +3367,8 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
               return h('tr',{style:{background:pi%2===0?'#fff':'#fafafa'}},
                 h('td',{style:{padding:'4px 8px',fontWeight:'bold'}},p.title),
                 h('td',{style:{padding:'4px 8px',textAlign:'center',color:'#555'}},p.sunPrice.toFixed(2)),
-                h('td',{style:{padding:'2px 4px'}},h('input',{type:'number',min:'0',style:{width:'60px',padding:'5px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px',background:p.days.sun.del?'#fff':'#fafafa'},value:p.days.sun.del,oninput:ev=>{p.days.sun.del=ev.target.value;save();render();}})),
-                h('td',{style:{padding:'2px 4px'}},h('input',{type:'number',min:'0',style:{width:'60px',padding:'5px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px',background:p.days.sun.ret?'#fffbe6':'#fafafa'},value:p.days.sun.ret,oninput:ev=>{p.days.sun.ret=ev.target.value;save();render();}})),
+                h('td',{style:{padding:'2px 4px'}},h('input',{type:'number',min:'0',style:{width:'60px',padding:'5px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px',background:p.days.sun.del?'#fff':'#fafafa'},value:p.days.sun.del,oninput:ev=>{p.days.sun.del=ev.target.value;saveRender();}})),
+                h('td',{style:{padding:'2px 4px'}},h('input',{type:'number',min:'0',style:{width:'60px',padding:'5px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px',background:p.days.sun.ret?'#fffbe6':'#fafafa'},value:p.days.sun.ret,oninput:ev=>{p.days.sun.ret=ev.target.value;saveRender();}})),
                 h('td',{style:{padding:'4px 8px',textAlign:'right',fontWeight:'bold',color:net<0?'#b94040':'#2a5e2a'}},net),
                 h('td',{style:{padding:'4px 8px',textAlign:'right',fontWeight:'bold'}},(net*p.sunPrice)===0?'—':'£'+(net*p.sunPrice).toFixed(2))
               );
@@ -3402,11 +3404,11 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
               const cred = (parseFloat(m.retQty)||0)*(parseFloat(m.retPrice)||0);
               return h('tr',{key:mi,style:{background:mi%2===0?'#fff':'#fafafa'}},
                 h('td',{style:{padding:'4px 8px',fontWeight:'bold'}},m.title),
-                h('td',{style:{padding:'2px 4px'}},h('input',{type:'number',min:'0',style:{width:'55px',padding:'4px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px'},value:m.delQty,oninput:ev=>{m.delQty=ev.target.value;save();render();}})),
-                h('td',{style:{padding:'2px 4px'}},h('input',{type:'number',min:'0',step:'0.01',style:{width:'60px',padding:'4px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px'},value:m.delPrice,oninput:ev=>{m.delPrice=ev.target.value;save();render();}})),
+                h('td',{style:{padding:'2px 4px'}},h('input',{type:'number',min:'0',style:{width:'55px',padding:'4px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px'},value:m.delQty,oninput:ev=>{m.delQty=ev.target.value;saveRender();}})),
+                h('td',{style:{padding:'2px 4px'}},h('input',{type:'text',inputMode:'decimal',style:{width:'60px',padding:'4px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px'},value:m.delPrice,oninput:ev=>{m.delPrice=ev.target.value;save();}})),
                 h('td',{style:{padding:'4px 8px',textAlign:'right',color:'#2a5e2a',fontWeight:'bold'}},inv?'£'+inv.toFixed(2):'—'),
-                h('td',{style:{padding:'2px 4px'}},h('input',{type:'number',min:'0',style:{width:'55px',padding:'4px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px',background:m.retQty?'#fffbe6':'#fafafa'},value:m.retQty,oninput:ev=>{m.retQty=ev.target.value;save();render();}})),
-                h('td',{style:{padding:'2px 4px'}},h('input',{type:'number',min:'0',step:'0.01',style:{width:'60px',padding:'4px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px',background:m.retQty?'#fffbe6':'#fafafa'},value:m.retPrice,oninput:ev=>{m.retPrice=ev.target.value;save();render();}})),
+                h('td',{style:{padding:'2px 4px'}},h('input',{type:'number',min:'0',style:{width:'55px',padding:'4px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px',background:m.retQty?'#fffbe6':'#fafafa'},value:m.retQty,oninput:ev=>{m.retQty=ev.target.value;saveRender();}})),
+                h('td',{style:{padding:'2px 4px'}},h('input',{type:'text',inputMode:'decimal',style:{width:'60px',padding:'4px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px',background:m.retQty?'#fffbe6':'#fafafa'},value:m.retPrice,oninput:ev=>{m.retPrice=ev.target.value;save();}})),
                 h('td',{style:{padding:'4px 8px',textAlign:'right',color:'#b94040',fontWeight:'bold'}},cred?'−£'+cred.toFixed(2):'—'),
                 h('td',{style:{padding:'4px 8px',textAlign:'center'}},h('button',{className:'btn',style:{background:'#f0e0e0',color:'#b94040',border:'none',padding:'3px 8px',borderRadius:'3px',fontSize:'12px',cursor:'pointer'},onclick:()=>{wk.mags.splice(mi,1);save();render();}}, '✕'))
               );
@@ -3444,11 +3446,11 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
         h('div',{className:'g3'},
           h('div',{},
             h('label',{className:'fl'},'Overdue (£)'),
-            h('input',{type:'number',step:'0.01',className:'fi',value:wk.overdue,oninput:e=>{wk.overdue=e.target.value;save();render();}})
+            h('input',{type:'number',step:'0.01',className:'fi',value:wk.overdue,oninput:e=>{wk.overdue=e.target.value;saveRender();}})
           ),
           h('div',{},
             h('label',{className:'fl'},'Vouchers (£)'),
-            h('input',{type:'number',step:'0.01',className:'fi',value:wk.vouchers,oninput:e=>{wk.vouchers=e.target.value;save();render();}})
+            h('input',{type:'number',step:'0.01',className:'fi',value:wk.vouchers,oninput:e=>{wk.vouchers=e.target.value;saveRender();}})
           ),
           h('div',{},
             h('label',{className:'fl'},'Note'),

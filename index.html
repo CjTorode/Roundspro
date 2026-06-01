@@ -223,7 +223,7 @@ const S={get:(k,fb)=>{try{const v=localStorage.getItem('cjt_'+k);return v?JSON.p
 const DB = {
   SETTINGS_KEYS: ['gstRate','gstEnabled','gstNumber','defaultDelivery','showCostPrice',
     'calEvents','billingStart','billingPeriod','billingStart2','billingPeriod2','bizDetails','lastWedCharge','billStyle',
-    'shopDiscountPaper','shopDiscountMag','shopEmail','sendgridKey','noPaperDays'],
+    'shopDiscountPaper','shopDiscountMag','shopEmail','shopEmail2','sendgridKey','noPaperDays'],
 
   async saveCustomers(){
     if(!getSB()) return;
@@ -629,6 +629,7 @@ const st={
   shopDiscountPaper: S.get('shopDiscountPaper', 8),
   shopDiscountMag: S.get('shopDiscountMag', 10),
   shopEmail: S.get('shopEmail', 'Zac@alliance.gg'),
+  shopEmail2: S.get('shopEmail2', ''),
   shopFromEmail: S.get('shopFromEmail', 'Craigpapers@icloud.com'),
   sendgridKey: S.get('sendgridKey', ''),
   shopEditWeek: null,
@@ -3496,6 +3497,7 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
         }},'⬇ Download HTML'),
         h('button',{className:'btn b1',onclick:async ()=>{
           const toEmail = st.shopEmail || 'Zac@alliance.gg';
+          const ccEmail = (st.shopEmail2||'').trim();
           const biz2 = st.bizDetails;
           const subject = 'Invoice '+wk.invoiceNum+' — Week Ending '+wk.weekEnd;
           const html2 = shopInvoiceHTML(wk, biz2);
@@ -3508,14 +3510,17 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
             '  TOTAL DUE:         £'+c.totalDue.toFixed(2)+'\n\n'+
             'Kind regards,\nCraig Torode\n'+(biz2.address||'Sablonierre, Grandes Rocques, Castel, Guernsey. GY5 7FR')+'\nCraigpapers@icloud.com';
           try {
+            const payload = {to:toEmail,subject,html:html2,text:text2,from:'craigpapers@newsagentdelivr.com',fromName:biz2.name||'C J Torode Newsagent'};
+            if(ccEmail) payload.cc = ccEmail;
             const resp2 = await fetch('/.netlify/functions/send-email',{
               method:'POST',
               headers:{'Content-Type':'application/json'},
-              body:JSON.stringify({to:toEmail,subject,html:html2,text:text2,from:'craigpapers@newsagentdelivr.com',fromName:biz2.name||'C J Torode Newsagent'})
+              body:JSON.stringify(payload)
             });
             const d2 = await resp2.json().catch(()=>({error:'No response'}));
             if(!resp2.ok) throw new Error(d2.error||'Send failed');
-            toast('✓ Invoice '+wk.invoiceNum+' sent to '+toEmail);
+            const sentTo = ccEmail ? toEmail+' & '+ccEmail : toEmail;
+            toast('✓ Invoice '+wk.invoiceNum+' sent to '+sentTo);
           } catch(e2){
             toast('⚠ Send failed: '+e2.message);
           }
@@ -3553,6 +3558,10 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
         h('div',{},
           h('label',{className:'fl'},'Invoice To (shop email)'),
           h('input',{type:'email',className:'fi',value:st.shopEmail,placeholder:'Zac@alliance.gg',oninput:e=>{st.shopEmail=e.target.value;S.set('shopEmail',st.shopEmail);clearTimeout(ps._t);ps._t=setTimeout(()=>DB.saveSettings(),800);}})
+        ),
+        h('div',{},
+          h('label',{className:'fl'},'Also Send To (CC email)'),
+          h('input',{type:'email',className:'fi',value:st.shopEmail2||'',placeholder:'e.g. Craigpapers@icloud.com',oninput:e=>{st.shopEmail2=e.target.value;S.set('shopEmail2',st.shopEmail2);clearTimeout(ps._t);ps._t=setTimeout(()=>DB.saveSettings(),800);}})
         ),
         h('div',{},
           h('label',{className:'fl'},'Send From (your email)'),

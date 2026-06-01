@@ -2769,6 +2769,168 @@ ${wk.note ? '<p style="font-size:13px;color:#555;margin-top:12px">Note: '+wk.not
   <p>FROM: ALLIANCE LTD &nbsp;&nbsp; TO: ${biz.name || 'Craig Torode'}, ${biz.address || 'Sablonierre, Grandes Rocques, Castel, Guernsey'}</p>
   <p>Invoice ${wk.invoiceNum} &nbsp;|&nbsp; Week ending ${fmtDate(wk.weekEnd)} &nbsp;|&nbsp; <strong>TOTAL DUE: ${fmt(c.totalDue)}</strong></p>
 </div>
+
+<!-- ── SUPPLY SHEET PAGE 2 ── -->
+<div style="page-break-before:always"></div>
+<div style="font-family:Georgia,serif;max-width:680px;margin:0 auto;padding:0 20px;color:#1a1a1a;font-size:13px">
+  <div style="text-align:center;margin-bottom:16px;padding-bottom:12px;border-bottom:3px solid #c8a84b">
+    <div style="font-size:11px;letter-spacing:3px;text-transform:uppercase;color:#888;margin-bottom:2px">Supply Sheet</div>
+    <div style="font-size:18px;font-weight:bold">${biz.name || 'C J Torode'} — Alliance Ltd</div>
+    <div style="font-size:12px;color:#666">Invoice ${wk.invoiceNum} &nbsp;·&nbsp; Week ending ${fmtDate(wk.weekEnd)}</div>
+  </div>
+
+  <!-- Daily papers Mon-Fri -->
+  <div class="section" style="font-size:11px;font-weight:bold;text-transform:uppercase;letter-spacing:.5px;color:#888;margin:12px 0 6px">📰 Daily Newspapers (Mon–Fri)</div>
+  <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:12px">
+    <thead>
+      <tr style="background:#1a1a1a;color:#c8a84b">
+        <th style="padding:6px 8px;text-align:left">Title</th>
+        <th style="padding:6px 4px;text-align:center">Price</th>
+        <th style="padding:6px 4px;text-align:center">Mon<br>Del&nbsp;Ret</th>
+        <th style="padding:6px 4px;text-align:center">Tue<br>Del&nbsp;Ret</th>
+        <th style="padding:6px 4px;text-align:center">Wed<br>Del&nbsp;Ret</th>
+        <th style="padding:6px 4px;text-align:center">Thu<br>Del&nbsp;Ret</th>
+        <th style="padding:6px 4px;text-align:center">Fri<br>Del&nbsp;Ret</th>
+        <th style="padding:6px 8px;text-align:right">Net</th>
+        <th style="padding:6px 8px;text-align:right">Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${wk.papers.filter(p=>p.weekPrice>0).map((p,i)=>{
+        let net=0;
+        const cells = ['mon','tue','wed','thu','fri'].map(d=>{
+          const del=parseFloat(p.days[d].del)||0;
+          const ret=parseFloat(p.days[d].ret)||0;
+          net+=(del-ret);
+          const hasData = del||ret;
+          return '<td style="padding:4px;text-align:center;'+(hasData?'':'color:#ccc')+'">'+(del||'—')+'&nbsp;<span style="color:#b94040">'+(ret?'('+ret+')':'')+'</span></td>';
+        }).join('');
+        const rowTotal=net*p.weekPrice;
+        return '<tr style="background:'+(i%2===0?'#fff':'#fafafa')+'">'
+          +'<td style="padding:4px 8px;font-weight:bold">'+p.title+'</td>'
+          +'<td style="padding:4px;text-align:center;color:#555">'+p.weekPrice.toFixed(2)+'</td>'
+          +cells
+          +'<td style="padding:4px 8px;text-align:right;font-weight:bold;color:'+(net<0?'#b94040':'#2a5e2a')+'">'+net+'</td>'
+          +'<td style="padding:4px 8px;text-align:right;font-weight:bold">'+(rowTotal===0?'—':'£'+rowTotal.toFixed(2))+'</td>'
+          +'</tr>';
+      }).join('')}
+      <tr style="background:#f5f0e8;font-weight:bold;border-top:2px solid #c8a84b">
+        <td colspan="7" style="padding:6px 8px">Daily Total</td>
+        <td colspan="2" style="padding:6px 8px;text-align:right">${fmt(c.dailyTotal)}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- Saturday -->
+  <div class="section" style="font-size:11px;font-weight:bold;text-transform:uppercase;letter-spacing:.5px;color:#888;margin:12px 0 6px">📰 Saturday</div>
+  <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:12px">
+    <thead>
+      <tr style="background:#1a1a1a;color:#c8a84b">
+        <th style="padding:6px 8px;text-align:left">Title</th>
+        <th style="padding:6px 8px;text-align:center">Price</th>
+        <th style="padding:6px 8px;text-align:center">Del</th>
+        <th style="padding:6px 8px;text-align:center">Ret</th>
+        <th style="padding:6px 8px;text-align:right">Net</th>
+        <th style="padding:6px 8px;text-align:right">Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${wk.papers.filter(p=>p.satPrice>0).map((p,i)=>{
+        const del=parseFloat(p.days.sat.del)||0;
+        const ret=parseFloat(p.days.sat.ret)||0;
+        const net=del-ret;
+        return '<tr style="background:'+(i%2===0?'#fff':'#fafafa')+'">'
+          +'<td style="padding:4px 8px;font-weight:bold">'+p.title+'</td>'
+          +'<td style="padding:4px 8px;text-align:center;color:#555">'+p.satPrice.toFixed(2)+'</td>'
+          +'<td style="padding:4px 8px;text-align:center">'+(del||'—')+'</td>'
+          +'<td style="padding:4px 8px;text-align:center;color:#b94040">'+(ret?'('+ret+')':'—')+'</td>'
+          +'<td style="padding:4px 8px;text-align:right;font-weight:bold;color:'+(net<0?'#b94040':'#2a5e2a')+'">'+net+'</td>'
+          +'<td style="padding:4px 8px;text-align:right;font-weight:bold">'+(net*p.satPrice===0?'—':'£'+(net*p.satPrice).toFixed(2))+'</td>'
+          +'</tr>';
+      }).join('')}
+      <tr style="background:#f5f0e8;font-weight:bold;border-top:2px solid #c8a84b">
+        <td colspan="5" style="padding:6px 8px">Saturday Total</td>
+        <td style="padding:6px 8px;text-align:right">${fmt(c.satTotal)}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- Sunday -->
+  <div class="section" style="font-size:11px;font-weight:bold;text-transform:uppercase;letter-spacing:.5px;color:#888;margin:12px 0 6px">📰 Sunday</div>
+  <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:12px">
+    <thead>
+      <tr style="background:#1a1a1a;color:#c8a84b">
+        <th style="padding:6px 8px;text-align:left">Title</th>
+        <th style="padding:6px 8px;text-align:center">Price</th>
+        <th style="padding:6px 8px;text-align:center">Del</th>
+        <th style="padding:6px 8px;text-align:center">Ret</th>
+        <th style="padding:6px 8px;text-align:right">Net</th>
+        <th style="padding:6px 8px;text-align:right">Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${wk.papers.filter(p=>p.sunPrice>0).map((p,i)=>{
+        const del=parseFloat(p.days.sun.del)||0;
+        const ret=parseFloat(p.days.sun.ret)||0;
+        const net=del-ret;
+        return '<tr style="background:'+(i%2===0?'#fff':'#fafafa')+'">'
+          +'<td style="padding:4px 8px;font-weight:bold">'+p.title+'</td>'
+          +'<td style="padding:4px 8px;text-align:center;color:#555">'+p.sunPrice.toFixed(2)+'</td>'
+          +'<td style="padding:4px 8px;text-align:center">'+(del||'—')+'</td>'
+          +'<td style="padding:4px 8px;text-align:center;color:#b94040">'+(ret?'('+ret+')':'—')+'</td>'
+          +'<td style="padding:4px 8px;text-align:right;font-weight:bold;color:'+(net<0?'#b94040':'#2a5e2a')+'">'+net+'</td>'
+          +'<td style="padding:4px 8px;text-align:right;font-weight:bold">'+(net*p.sunPrice===0?'—':'£'+(net*p.sunPrice).toFixed(2))+'</td>'
+          +'</tr>';
+      }).join('')}
+      <tr style="background:#f5f0e8;font-weight:bold;border-top:2px solid #c8a84b">
+        <td colspan="5" style="padding:6px 8px">Sunday Total</td>
+        <td style="padding:6px 8px;text-align:right">${fmt(c.sunTotal)}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- Magazines -->
+  <div class="section" style="font-size:11px;font-weight:bold;text-transform:uppercase;letter-spacing:.5px;color:#888;margin:12px 0 6px">📚 Magazines</div>
+  <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:12px">
+    <thead>
+      <tr style="background:#1a1a1a;color:#c8a84b">
+        <th style="padding:6px 8px;text-align:left">Title</th>
+        <th style="padding:6px 8px;text-align:center">Del Qty</th>
+        <th style="padding:6px 8px;text-align:center">@ Price</th>
+        <th style="padding:6px 8px;text-align:right">Invoiced</th>
+        <th style="padding:6px 8px;text-align:center">Ret Qty</th>
+        <th style="padding:6px 8px;text-align:center">@ Price</th>
+        <th style="padding:6px 8px;text-align:right">Credited</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${wk.mags.filter(m=>(parseFloat(m.delQty)||0)>0||(parseFloat(m.retQty)||0)>0).map((m,i)=>{
+        const inv=(parseFloat(m.delQty)||0)*(parseFloat(m.delPrice)||0);
+        const cred=(parseFloat(m.retQty)||0)*(parseFloat(m.retPrice)||0);
+        return '<tr style="background:'+(i%2===0?'#fff':'#fafafa')+'">'
+          +'<td style="padding:4px 8px;font-weight:bold">'+m.title+'</td>'
+          +'<td style="padding:4px 8px;text-align:center">'+(m.delQty||'—')+'</td>'
+          +'<td style="padding:4px 8px;text-align:center">'+(m.delPrice?'£'+parseFloat(m.delPrice).toFixed(2):'—')+'</td>'
+          +'<td style="padding:4px 8px;text-align:right;color:#2a5e2a;font-weight:bold">'+(inv?'£'+inv.toFixed(2):'—')+'</td>'
+          +'<td style="padding:4px 8px;text-align:center;color:#b94040">'+(m.retQty||'—')+'</td>'
+          +'<td style="padding:4px 8px;text-align:center">'+(m.retPrice?'£'+parseFloat(m.retPrice).toFixed(2):'—')+'</td>'
+          +'<td style="padding:4px 8px;text-align:right;color:#b94040;font-weight:bold">'+(cred?'−£'+cred.toFixed(2):'—')+'</td>'
+          +'</tr>';
+      }).join('')}
+      <tr style="background:#f5f0e8;font-weight:bold;border-top:2px solid #c8a84b">
+        <td colspan="3" style="padding:6px 8px">Magazines Delivered</td>
+        <td style="padding:6px 8px;text-align:right">${fmt(c.magDel)}</td>
+        <td colspan="2" style="padding:6px 8px">Magazines Returned</td>
+        <td style="padding:6px 8px;text-align:right;color:#b94040">${c.magRet?'−£'+c.magRet.toFixed(2):'—'}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div style="background:#1a1a1a;color:#c8a84b;padding:12px 16px;border-radius:4px;display:flex;justify-content:space-between;font-size:14px;font-weight:bold">
+    <span>TOTAL DUE (after discounts)</span><span>${fmt(c.totalDue)}</span>
+  </div>
+  <div style="text-align:center;font-size:11px;color:#aaa;margin-top:12px">Supply sheet for Invoice ${wk.invoiceNum} — ${biz.name || 'C J Torode Newsagent'}</div>
+</div>
 </body></html>`;
 }
 

@@ -675,12 +675,17 @@ function applyListOrder(){
   ];
   const r1map={};round1.forEach((n,i)=>{r1map[n.toUpperCase()]=i+1;});
   const r2map={};round2.forEach((n,i)=>{r2map[n.toUpperCase()]=i+1;});
-  st.customers=st.customers.map(c=>{
-    const name=(c.name||'').trim().toUpperCase();
-    const r1=r1map[name];if(r1!==undefined)return{...c,listOrder:r1,roundOrder:r1};
-    const r2=r2map[name];if(r2!==undefined)return{...c,listOrder:100+r2,roundOrder:r2};
-    return c;
-  });
+  // Only seed from hardcoded list if NO manual ordering has ever been saved
+  const hasManualList=st.customers.some(c=>c.listOrder&&c.listOrder>0);
+  const hasManualRound=st.customers.some(c=>c.roundOrder&&c.roundOrder>0&&c.roundOrder!==99);
+  if(!hasManualList&&!hasManualRound){
+    st.customers=st.customers.map(c=>{
+      const name=(c.name||'').trim().toUpperCase();
+      const r1=r1map[name];if(r1!==undefined)return{...c,listOrder:r1,roundOrder:r1};
+      const r2=r2map[name];if(r2!==undefined)return{...c,listOrder:100+r2,roundOrder:r2};
+      return c;
+    });
+  }
 }
 applyListOrder();
 
@@ -869,7 +874,9 @@ function calcBill(c,start,days){
   }).filter(Boolean);
 
   const pt=lines.reduce(function(s,l){return s+l.lineTotal;},0);
-  const weeks=Math.round(days/7); const dt=c.deliveryCharge*weeks; // flat weekly charge
+  var chargeableWeeks=0;
+  if(start){for(var wi=0;wi<Math.round(days/7);wi++){var wStart=new Date(start);wStart.setDate(wStart.getDate()+wi*7);var allHol=true;for(var wd=0;wd<7;wd++){var wDay=new Date(wStart);wDay.setDate(wDay.getDate()+wd);var wDs=wDay.toISOString().split('T')[0];if(!onHoliday(c,wDs)){allHol=false;break;}}if(!allHol)chargeableWeeks++;}}else{chargeableWeeks=Math.round(days/7);}
+  const weeks=Math.round(days/7); const dt=c.deliveryCharge*chargeableWeeks; // deduct full holiday weeks
   const dg=!c.gstExempt?dt*(gst/100):0;
   const gt=lines.reduce(function(s,l){return s+l.gstAmt;},0)+dg;
   const sub=pt+dt;
@@ -1246,11 +1253,12 @@ function exportICS(){
   const ics=d=>d.replace(/-/g,'');
   const nxt=d=>{const x=new Date(d);x.setDate(x.getDate()+1);return x.toISOString().split('T')[0];};
   let evs=[];
-  st.customers.forEach(c=>{(c.holidays||[]).forEach((h,i)=>{
-    if(h.type==='range'&&h.start&&h.end)evs.push(`BEGIN:VEVENT\r\nUID:h-${c.id}-${i}@cjt\r\nDTSTAMP:${stamp}\r\nDTSTART;VALUE=DATE:${ics(h.start)}\r\nDTEND;VALUE=DATE:${ics(nxt(h.end))}\r\nSUMMARY:🏖 ${esc(c.name)} Holiday\r\nCATEGORIES:Customer Holiday\r\nEND:VEVENT`);
-    else if(h.type==='day'&&h.date)evs.push(`BEGIN:VEVENT\r\nUID:h-${c.id}-${i}@cjt\r\nDTSTAMP:${stamp}\r\nDTSTART;VALUE=DATE:${ics(h.date)}\r\nDTEND;VALUE=DATE:${ics(nxt(h.date))}\r\nSUMMARY:🏖 ${esc(c.name)} Holiday (1 day)\r\nCATEGORIES:Customer Holiday\r\nEND:VEVENT`);
+  // Use content-based UIDs so re-importing never duplicates on iPhone
+  st.customers.forEach(c=>{(c.holidays||[]).forEach((h)=>{
+    if(h.type==='range'&&h.start&&h.end)evs.push(`BEGIN:VEVENT\r\nUID:h-${c.id}-${h.start}-${h.end}@cjt\r\nDTSTAMP:${stamp}\r\nDTSTART;VALUE=DATE:${ics(h.start)}\r\nDTEND;VALUE=DATE:${ics(nxt(h.end))}\r\nSUMMARY:🏖 ${esc(c.name)} Holiday\r\nCATEGORIES:Customer Holiday\r\nEND:VEVENT`);
+    else if(h.type==='day'&&h.date)evs.push(`BEGIN:VEVENT\r\nUID:h-${c.id}-${h.date}@cjt\r\nDTSTAMP:${stamp}\r\nDTSTART;VALUE=DATE:${ics(h.date)}\r\nDTEND;VALUE=DATE:${ics(nxt(h.date))}\r\nSUMMARY:🏖 ${esc(c.name)} Holiday (1 day)\r\nCATEGORIES:Customer Holiday\r\nEND:VEVENT`);
   });});
-  st.calEvents.forEach((e,i)=>{if(!e.date)return;evs.push(`BEGIN:VEVENT\r\nUID:ev-${i}@cjt\r\nDTSTAMP:${stamp}\r\nDTSTART;VALUE=DATE:${ics(e.date)}\r\nDTEND;VALUE=DATE:${ics(nxt(e.date))}\r\nSUMMARY:📌 ${esc(e.text)}\r\nCATEGORIES:Shop Event\r\nEND:VEVENT`);});
+  st.calEvents.forEach((e)=>{if(!e.date)return;const evUid=e.date+'-'+e.text.replace(/\s+/g,'').toLowerCase();evs.push(`BEGIN:VEVENT\r\nUID:ev-${evUid}@cjt\r\nDTSTAMP:${stamp}\r\nDTSTART;VALUE=DATE:${ics(e.date)}\r\nDTEND;VALUE=DATE:${ics(nxt(e.date))}\r\nSUMMARY:📌 ${esc(e.text)}\r\nCATEGORIES:Shop Event\r\nEND:VEVENT`);});
   const cal=`BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//CJ Torode//EN\r\nX-WR-CALNAME:${esc(st.bizDetails.name||'CJ Torode')}\r\nX-WR-TIMEZONE:Europe/London\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\n${evs.join('\r\n')}\r\nEND:VCALENDAR`;
   const blob=new Blob([cal],{type:'text/calendar;charset=utf-8'});
   const url=URL.createObjectURL(blob);

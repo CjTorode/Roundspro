@@ -3316,9 +3316,10 @@ Use null for any value you cannot read clearly. Never invent or guess a price â€
                 if(topCount > 0 && midZeros > 0 && hasBottomReturns){
                   const offset = topCount;
                   console.log('Returns alignment correction: shifting down by '+offset+' for day '+day);
-                  const rets = dayPapers.map(p => p[day+'_ret'] || 0);
+                  // Only shift non-GP papers â€” GP return is always correct
+                  const rets = nonGP.map(p => p[day+'_ret'] || 0);
                   const shifted = Array(offset).fill(0).concat(rets.slice(0, rets.length - offset));
-                  dayPapers.forEach((p, i) => { p[day+'_ret'] = shifted[i]; });
+                  nonGP.forEach((p, i) => { p[day+'_ret'] = shifted[i]; });
                 }
               }
             }

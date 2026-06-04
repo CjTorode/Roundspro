@@ -3427,6 +3427,37 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
               return newStr;
             }
 
+            // ── RETURNS ALIGNMENT CORRECTION ────────────────────────────
+            // The AI sometimes shifts the returns column up by N rows.
+            // Detection: if papers at the top have ret > del, the stack has shifted up.
+            // Fix: find the offset and shift all returns down by that amount.
+            if(parsed.papers && parsed.papers.length > 0){
+              const day = parsed.date;
+              const dayPapers = parsed.papers.filter(p => p[day+'_del'] != null);
+              if(dayPapers.length >= 3){
+                // Find how many leading papers have ret > del (impossible in real life)
+                // or have a return when their delivery is 0
+                let offset = 0;
+                for(let i = 0; i < dayPapers.length - 1; i++){
+                  const del = dayPapers[i][day+'_del'] || 0;
+                  const ret = dayPapers[i][day+'_ret'] || 0;
+                  // GP always has returns so skip it
+                  if((dayPapers[i].title||'').toLowerCase().includes('guernsey')) continue;
+                  // If ret > del, this return doesn't belong here — count as offset
+                  if(ret > 0 && del > 0 && ret > del){ offset++; }
+                  else break;
+                }
+                if(offset > 0){
+                  console.log('Returns alignment: shifting returns down by '+offset+' rows');
+                  // Collect all returns in order
+                  const rets = dayPapers.map(p => p[day+'_ret']);
+                  // Shift down by offset — insert nulls at top, drop from bottom
+                  const shifted = Array(offset).fill(null).concat(rets.slice(0, rets.length - offset));
+                  dayPapers.forEach((p, i) => { p[day+'_ret'] = shifted[i]; });
+                }
+              }
+            }
+
             // Merge papers
             let paperUpdates = 0;
             if(parsed.papers){

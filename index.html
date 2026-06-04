@@ -3171,7 +3171,21 @@ PAPERS (top section):
   Then: Mirr del=6 ret=3, Mail del=4 ret=4, Sun del=5 ret=0, Exp del=5 ret=0,
         Star del=8 ret=0, Times del=3 ret=2, The I del=1 ret=0, GP del=73 ret=32
 
-  Example — Tuesday page, some papers have no return:
+  Example — Wednesday page, returns only on lower papers:
+  CRITICAL: The circled returns column does NOT always start at the first paper.
+  It starts at whichever paper first has a return — papers above it have ret=0.
+    Mirr   6                 ← del=6, ret=0 (no circled number level with this row)
+    Mail   4                 ← del=4, ret=0 (no circled number level with this row)
+    Sun    5                 ← del=5, ret=0 (no circled number level with this row)
+    Exp    5     ③           ← del=5, ret=3 (circled stack STARTS here)
+    Star   8     ④           ← del=8, ret=4
+    Tmes   3     ②           ← del=3, ret=2
+    The i  1     ①           ← del=1, ret=1
+    GP    73     ㉜           ← del=73, ret=32
+  Then: Mirror del=6 ret=0, Mail del=4 ret=0, Sun del=5 ret=0, Express del=5 ret=3,
+        Star del=8 ret=4, Times del=3 ret=2, The I del=1 ret=1, GP del=73 ret=32
+  CRITICAL: Match the vertical position of each circled number to the paper on the SAME horizontal line.
+  Do NOT assume the first circled number belongs to the first paper — it belongs to whichever paper is level with it.
     Mirr   7     ②           ← del=7, ret=2
     Mad   12     ⑥           ← del=12, ret=6
     Sun    8                 ← del=8, ret=0 (NO circled number on THIS row — ret=0)
@@ -3431,6 +3445,24 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
                     if(updated !== String(wp.days[d].ret||'')){ wp.days[d].ret = updated; paperUpdates++; }
                   }
                 });
+              });
+            }
+
+            // Known price corrections — AI consistently misreads these specific prices
+            const KNOWN_PRICES = {
+              'my weekly': 2.70,
+              'radio times': 5.99,
+            };
+            if(parsed.mags){
+              parsed.mags.forEach(sm => {
+                const key = (sm.title||'').toLowerCase().replace(/[^a-z0-9]/g,' ').trim();
+                for(const [k,v] of Object.entries(KNOWN_PRICES)){
+                  if(key.includes(k) && sm.del_price && sm.del_price !== v){
+                    console.log('Price correction: '+sm.title+' '+sm.del_price+'→'+v);
+                    sm.del_price = v;
+                    if(sm.ret_price) sm.ret_price = v;
+                  }
+                }
               });
             }
 

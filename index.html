@@ -3156,8 +3156,18 @@ PAPERS (top section):
   Then: Mirr del=5 ret=1, Mail del=5 ret=1, Sun del=7 ret=4, Exp del=4 ret=2,
         Star del=6 ret=1, Times del=3 ret=2, The i del=1 ret=0, GP del=69 ret=37
   
-  The page heading shows the day (e.g. "Tues 26 May" = tue, "Wed 27 May" = wed)
-  All quantities on that page are for that single day.
+  DAY READING — CRITICAL:
+  Read the day from the page heading ONLY. Common handwritten forms:
+    "Wed" / "Weds" / "Wednesday" → "wed"
+    "Tue" / "Tues" / "Tuesday"   → "tue"
+    "Mon" / "Monday"             → "mon"
+    "Thu" / "Thur" / "Thursday"  → "thu"
+    "Fri" / "Friday"             → "fri"
+    "Sat" / "Saturday"           → "sat"
+    "Sun" / "Sunday"             → "sun"
+  CRITICAL: "Wed" is WEDNESDAY = "wed". It is NOT Thursday. Do not confuse "Wed" with "Thu".
+  The page number in the top corner (e.g. "17") is NOT the day — ignore it for day detection.
+  All quantities on that page are for that single day only.
 
 MAGAZINES (lower section, below the papers):
   IMPORTANT: The magazines section is COMPLETELY SEPARATE from the papers section.
@@ -3165,84 +3175,99 @@ MAGAZINES (lower section, below the papers):
   The numbers in the papers returns column (right side of papers section) must NOT
   be assigned to any magazine titles.
 
-  Craig's magazine format — TWO possible layouts:
-  
-  LAYOUT A (standard, as seen on Wednesday):
-  TITLE  [circled ret qty]  [del qty] — [del price]
-  - The TITLE is on the left
-  - A CIRCLED number = returns quantity from last week
-  - Then: del_qty — del_price
+════════════════════════════════
+MAGAZINE ROW ALIGNMENT — MOST CRITICAL RULE
+════════════════════════════════
+  Each magazine row contains ALL of its own data on ONE horizontal line:
+    TITLE  [circled ret_qty]  [del_qty]  —  [del_price]
 
-  LAYOUT B (compact, as seen on Thursday):
+  You MUST read each row completely and independently before moving to the next.
+  The title ANCHORS the row — use it to lock onto the correct horizontal position.
+  NEVER skip a title. NEVER assign numbers from one row to a different title.
+
+  The circled returns column sits between the title and the delivery quantity.
+  It can appear visually close to the title OR close to the del_qty.
+  ALWAYS assign the circled number to the title on the SAME horizontal line.
+
+  STEP-BY-STEP METHOD — follow this for every magazine row:
+  1. Identify the title text on the left
+  2. Look RIGHT along that exact horizontal line
+  3. Find any circled number → that is ret_qty for THIS title
+  4. Find the delivery quantity (plain number) → del_qty for THIS title
+  5. Find the price after the dash (—) → del_price for THIS title
+  6. Record the complete row BEFORE moving to the next title
+  7. Move down to the next title and repeat
+
+  If you cannot clearly read a value, use null — do NOT borrow a value from another row.
+
+════════════════════════════════
+MAGAZINE RETURNS — CRITICAL
+════════════════════════════════
+  On Wednesday pages, returns are shown as CIRCLED numbers between the title and del_qty.
+  EVERY circled number in the magazine section is a returns quantity — read ALL of them.
+  ret_qty=0 should only appear when there is genuinely NO circled number on that row.
+  Do NOT return ret_qty=0 for every magazine — that means you have missed the returns column entirely.
+
+  Wednesday magazine format (Layout A):
+  TITLE  [circled ret_qty]  [del_qty] — [del_price]
+
+  COMPLETE WEDNESDAY EXAMPLE — read every row exactly like this:
+    "Bella      ③  7  — 180"  → title=Bella,          ret_qty=3,  del_qty=7,  del_price=1.80
+    "Best       ④  4  — 299"  → title=Best,            ret_qty=4,  del_qty=4,  del_price=2.99
+    "Closer     ④  3  — 320"  → title=Closer,          ret_qty=4,  del_qty=3,  del_price=3.20
+    "Hello         2  — 425"  → title=Hello!,          ret_qty=0,  del_qty=2,  del_price=4.25
+    "Inside Soap   4  — 235"  → title=Inside Soap,     ret_qty=0,  del_qty=4,  del_price=2.35
+    "My Weekly  ②  8  — 270"  → title=My Weekly,       ret_qty=2,  del_qty=8,  del_price=2.70
+    "P Friend      5  — 549"  → title=Peoples Friend,  ret_qty=0,  del_qty=5,  del_price=5.49
+    "R Times    ③  2  — 320"  → title=Radio Times,     ret_qty=3,  del_qty=2,  del_price=3.20
+    "Total TV   ②  1  — 450"  → title=Total TV Guide,  ret_qty=2,  del_qty=1,  del_price=4.50
+    "TV+Stream  ③ 36  —  85"  → title=TV & Streaming Weekly, ret_qty=3, del_qty=36, del_price=0.85
+    "TV Choice  ⑤ 15  —  88"  → title=TV Choice,       ret_qty=5,  del_qty=15, del_price=0.88
+    "U on TV       3  — 190"  → title=Whats On TV Weekly, ret_qty=0, del_qty=3, del_price=1.90
+    "Woman      ③  3  — 190"  → title=Woman,           ret_qty=3,  del_qty=3,  del_price=1.90
+    "W Own         6  — 255"  → title=Womans Own,      ret_qty=0,  del_qty=6,  del_price=2.55
+    "W Weekly   ③  6  — 255"  → title=Womans Weekly,   ret_qty=3,  del_qty=6,  del_price=2.55
+    "TAB          14  — 155"  → title=Take A Break,    ret_qty=0,  del_qty=14, del_price=1.55
+    "Thats Life ④ 10  — 110"  → title=That's Life Weekly, ret_qty=4, del_qty=10, del_price=1.10
+    "Love It       3  —  99"  → title=Love It!,        ret_qty=0,  del_qty=3,  del_price=0.99
+
+  CRITICAL PRICE NOTES from the example above:
+  - TV & Streaming: price is "85" = £0.85, NOT £8.50. Two-digit price = pence only (0.XX)
+  - TV Choice: price is "88" = £0.88, NOT £8.80
+  - That's Life: price is "110" = £1.10, NOT £3.20 or any other value
+  - Radio Times: "R Times" or "R Ties" — do NOT skip this title
+  - "U on TV" = Whats On TV Weekly (NOT a separate unknown title)
+  - TAB / Tab = Take A Break (price usually 145=£1.45 or 155=£1.55)
+  - Love It / Love It! always appears near the bottom, price around 99=£0.99
+
+  Layout B (Thursday slash format):
   TITLE  [ret qty]  /  [del qty]  —  [del price]
-  - The TITLE is on the left
-  - A plain or circled number on the left = returns quantity
-  - A slash "/" separates returns from delivery
-  - Then: del_qty — del_price
   - Example: "Bella  2 / 5 — 180" means ret_qty=2, del_qty=5, del_price=1.80
   - Example: "TAB  8 / 14 — 145" means ret_qty=8, del_qty=14, del_price=1.45
   - If no number before the slash, ret_qty=0
-  - If no slash at all, treat the number as del_qty and ret_qty=0
 
   Prices are always written without decimal points, but may use different separators:
   - Plain number: 270=2.70, 799=7.99, 1099=10.99, 1999=19.99
-  - With dash: 10-99=10.99, 7-99=7.99, 19-99=19.99, 2-70=2.70
+  - With dash: 10-99=10.99, 7-99=7.99, 2-70=2.70
+  - TWO-DIGIT prices: 85=0.85, 88=0.88, 99=0.99 — these are pence-only prices, NOT pounds
   - The dash is just a separator, NOT a minus sign — always convert to decimal price
-  - Single or double digit before dash = pounds, two digits after = pence
-  - Examples: "10 — 10-99" means del_qty=10, del_price=10.99
-  -           "10 — 799" means del_qty=10, del_price=7.99
-  -           "4 — 19-99" means del_qty=4, del_price=19.99
-  a second price after the delivery price on the same line:
-  
-  Format: TITLE [ret_qty] [del_qty] — [del_price]  [ret_price]
-  
-  Examples:
-    "Woman  (7)  4 — 245  220"  → ret_qty=7, del_qty=4, del_price=2.45, ret_price=2.20
-    "Woman  7 / 4 — 245  220"   → ret_qty=7, del_qty=4, del_price=2.45, ret_price=2.20
-    "Best   3 / 4 — 299  275"   → ret_qty=3, del_qty=4, del_price=2.99, ret_price=2.75
-  
-  If only ONE price appears on the line, use it as BOTH del_price and ret_price.
-  If TWO prices appear on the line (after the dash), the FIRST is del_price, the SECOND is ret_price.
-  Prices are always written without decimal points: 220=2.20, 275=2.75, 245=2.45 etc.
 
-  In BOTH layouts:
-  - Prices are written without decimal points: 270=2.70, 245=2.45, 190=1.90, 750=7.50, 1099=10.99, 350=3.50, 299=2.99, 145=1.45, 320=3.20, 425=4.25, 450=4.50, 99=0.99, 350=3.50, 235=2.35, 550=5.50, 110=1.10, 380=3.80, 85=0.85, 88=0.88, 199=1.99, 230=2.30, 180=1.80
-  - If no return number present, ret_qty=0
+  If TWO prices appear on a line (after the delivery qty dash):
+    Format: TITLE [ret_qty] [del_qty] — [del_price]  [ret_price]
+    "Woman  (7)  4 — 245  220" → ret_qty=7, del_qty=4, del_price=2.45, ret_price=2.20
+  If only ONE price appears, use it as BOTH del_price and ret_price.
 
-  Examples — Layout A (standard):
-    "P.Friend  (4)  6 — 270"  → title=Peoples Friend, ret_qty=4, del_qty=6, del_price=2.70
-    "Woman     (7)  4 — 245"  → title=Woman, ret_qty=7, del_qty=4, del_price=2.45
-    "W.Own     (1)  6 — 190"  → title=Womans Own, ret_qty=1, del_qty=6, del_price=1.90
-    "Pls Multipack  4 — 750"  → title=FIFA Multipack, ret_qty=0, del_qty=4, del_price=7.50
-    "FIFA Tins      5 — 1099" → title=FIFA Tins, ret_qty=0, del_qty=5, del_price=10.99
-
-  Examples — Layout B (slash format):
-    "Bella      2 / 5 — 180"  → title=Bella, ret_qty=2, del_qty=5, del_price=1.80
-    "Best       3 / 4 — 299"  → title=Best, ret_qty=3, del_qty=4, del_price=2.99
-    "Chat       4 / 7 — 145"  → title=Chat, ret_qty=4, del_qty=7, del_price=1.45
-    "TAB        8 / 14 — 145" → title=Take A Break, ret_qty=8, del_qty=14, del_price=1.45
-    "TV Choice  6   36 — 85"  → title=TV Choice, ret_qty=6, del_qty=36, del_price=0.85
-    "TAB fiction feast 3  9 — 350" → title=TAB Fiction Feast, ret_qty=3, del_qty=9, del_price=3.50
-    "Yours      3 / 5 — 230"  → title=Yours, ret_qty=3, del_qty=5, del_price=2.30
-
-  NOTE: "Woman" and "W.Own" (Womans Own) and "W Weekly" (Womans Weekly) are THREE DIFFERENT titles — do not confuse them.
-  "Woman" abbreviation = Woman magazine (del_qty usually 3-6)
-  "W.Own" or "Womans Own" abbreviation = Womans Own magazine (del_qty usually 3-8)
-  "W Weekly" or "W Wkly" or "WW" abbreviation = Womans Weekly magazine (del_qty usually 4-8, price usually 2.55)
+  NOTE: "Woman", "W Own" (Womans Own) and "W Weekly" (Womans Weekly) are THREE DIFFERENT titles.
+  "Woman" = Woman magazine (del_qty usually 3-6, price around 1.90)
+  "W Own" / "Womans Own" = Womans Own magazine (del_qty usually 3-8, price around 2.55)
+  "W Weekly" / "W Wkly" = Womans Weekly (del_qty usually 4-8, price usually 2.55)
   All three may appear on the same page — read each row independently.
 
   CRITICAL — PRICE CONTAMINATION PREVENTION:
-  The papers section often has a stack of circled return numbers in the right-hand column
-  (e.g. ③ ④ ② ① ㉜ stacked vertically next to the paper titles).
-  These numbers are PAPER RETURNS ONLY — they are NOT magazine prices, NOT magazine quantities.
+  The papers section often has a stack of circled return numbers in the right-hand column.
+  These numbers are PAPER RETURNS ONLY — they are NOT magazine prices or quantities.
   The magazines section begins AFTER a clear gap below the GP/Guernsey Press row.
   NEVER use any number from the papers section as a magazine price or quantity.
-  Magazine prices are always to the RIGHT of the magazine del_qty, after a dash (—) or space.
-  Example of what NOT to do: seeing "32" in the papers returns column and using it as That's Life's price.
-  That's Life price is always written as "110" (=£1.10) on the That's Life row itself.
-
-  CRITICAL: The circled numbers are stacked together in one column — match each one
-  to the magazine title on the SAME horizontal line, not the nearest title.
 
 ════════════════════════════════
 OUTPUT FORMAT

@@ -3266,6 +3266,28 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
             const clean = text.replace(/```json|```/g,'').trim();
             const parsed = JSON.parse(clean);
 
+            // ── PAPERS RETURNS ALIGNMENT CORRECTION ──────────────────
+            // The AI consistently misaligns the returns column upward.
+            // Detection: if ret > del for any non-GP paper, shift all returns down.
+            if(parsed.papers && parsed.papers.length > 0){
+              const day = parsed.date;
+              const dayPapers = parsed.papers.filter(p => p[day+'_del'] != null);
+              const nonGP = dayPapers.filter(p => !(p.title||'').toLowerCase().includes('guernsey'));
+              // Count how many leading papers have ret > del (impossible — can't return more than delivered)
+              let offset = 0;
+              for(let i = 0; i < nonGP.length; i++){
+                const del = nonGP[i][day+'_del'] || 0;
+                const ret = nonGP[i][day+'_ret'] || 0;
+                if(ret > del && del > 0){ offset++; } else { break; }
+              }
+              if(offset > 0){
+                console.log('Returns shift correction: offset='+offset+' for day '+day);
+                const rets = dayPapers.map(p => p[day+'_ret']);
+                const shifted = Array(offset).fill(0).concat(rets.slice(0, rets.length - offset));
+                dayPapers.forEach((p, i) => { p[day+'_ret'] = shifted[i]; });
+              }
+            }
+
             // ── DATE SANITY CHECK ─────────────────────────────────────
             // Correct 'sun' misread of 'Mon' when week starts on Monday
             if(parsed.date === 'sun' && parsed.papers && parsed.papers.length > 0){

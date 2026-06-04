@@ -3151,7 +3151,9 @@ PAPERS (top section):
     Star   8                 ← del=8, ret=0
     Times  £3    ②           ← del=3, ret=2
     Hei    1                 ← del=1, ret=0
-    GP     73    ㉜           ← del=73, ret=32 (circled 32 is the GP return total)
+    GP     73    ㉜           ← del=73, ret=32 (㉜ is a large circled "32" — always read it as the GP return)
+  CRITICAL: GP always has a large circled return number — it may look like ㉜ (32), ㊺ (45), ㊷ (47), (53) etc.
+  These are ALWAYS the GP ret value. Never return 0 or null for GP ret when a circled number is present.
   Then: Mirr del=6 ret=3, Mail del=4 ret=4, Sun del=5 ret=0, Exp del=5 ret=0,
         Star del=8 ret=0, Times del=3 ret=2, The I del=1 ret=0, GP del=73 ret=32
 
@@ -3223,12 +3225,13 @@ MAGAZINE RETURNS — CRITICAL
     "Best       ④  4  — 299"  → title=Best,            ret_qty=4,  del_qty=4,  del_price=2.99
     "Closer     ④  3  — 320"  → title=Closer,          ret_qty=4,  del_qty=3,  del_price=3.20
     "Hello         2  — 425"  → title=Hello!,          ret_qty=0,  del_qty=2,  del_price=4.25
-    "Inside Soap   4  — 235"  → title=Inside Soap,     ret_qty=0,  del_qty=4,  del_price=2.35
+    "Inside Soap   4  — 450"  → title=Inside Soap,     ret_qty=0,  del_qty=4,  del_price=4.50
+    IMPORTANT: Inside Soap price is 450=£4.50, NOT 235. 235 is My Weekly's price.
     "My Weekly  ②  8  — 270"  → title=My Weekly,       ret_qty=2,  del_qty=8,  del_price=2.70
     IMPORTANT: My Weekly often has a small stray mark or "1" near the title — ignore it. The ② is the ret_qty, 8 is the del_qty.
     "P Friend      5  — 549"  → title=Peoples Friend,  ret_qty=0,  del_qty=5,  del_price=5.49
     IMPORTANT: Peoples Friend price is 549=£5.49. It is a HIGH price — do not confuse with a delivery quantity.
-    "R Times    ③  2  — 320"  → title=Radio Times,     ret_qty=3,  del_qty=2,  del_price=3.20
+    "R Times    ③  2  — 599"  → title=Radio Times,     ret_qty=3,  del_qty=2,  del_price=5.99
     IMPORTANT: After Radio Times, the next titles in order are Total TV Guide then TV & Streaming Weekly.
     "Total TV   ②  1  — 450"  → title=Total TV Guide,  ret_qty=2,  del_qty=1,  del_price=4.50
     IMPORTANT: Total TV Guide price is 450=£4.50. TV & Streaming Weekly price is 85=£0.85 (two digits = pence only).
@@ -3238,9 +3241,13 @@ MAGAZINE RETURNS — CRITICAL
     "Woman      ③  3  — 190"  → title=Woman,           ret_qty=3,  del_qty=3,  del_price=1.90
     "W Own         6  — 255"  → title=Womans Own,      ret_qty=0,  del_qty=6,  del_price=2.55
     "W Weekly   ③  6  — 255"  → title=Womans Weekly,   ret_qty=3,  del_qty=6,  del_price=2.55
+    IMPORTANT: Womans Weekly del_qty is typically 4-8. Price is 255=£2.55. Do NOT confuse with TAB below it.
     "TAB          14  — 155"  → title=Take A Break,    ret_qty=0,  del_qty=14, del_price=1.55
+    IMPORTANT: TAB/Take A Break del_qty is typically 10-20. Price is 145=£1.45 or 155=£1.55.
     "Thats Life ④ 10  — 110"  → title=That's Life Weekly, ret_qty=4, del_qty=10, del_price=1.10
+    IMPORTANT: That's Life del_qty is typically 8-14. Price is 110=£1.10. Do NOT confuse with Love It below it.
     "Love It       3  —  99"  → title=Love It!,        ret_qty=0,  del_qty=3,  del_price=0.99
+    IMPORTANT: Love It! price is 99=£0.99. It appears on Wednesday or Thursday pages. Do NOT skip it.
 
   CRITICAL PRICE NOTES from the example above:
   - TV & Streaming: price is "85" = £0.85, NOT £8.50. Two-digit price = pence only (0.XX)

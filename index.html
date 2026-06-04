@@ -3171,7 +3171,18 @@ PAPERS (top section):
   Then: Mirr del=6 ret=3, Mail del=4 ret=4, Sun del=5 ret=0, Exp del=5 ret=0,
         Star del=8 ret=0, Times del=3 ret=2, The I del=1 ret=0, GP del=73 ret=32
 
-  Example — Monday page with scribbled/crossed first return:
+  Example — Tuesday page, some papers have no return:
+    Mirr   7     ②           ← del=7, ret=2
+    Mad   12     ⑥           ← del=12, ret=6
+    Sun    8                 ← del=8, ret=0 (NO circled number on this row — ret=0)
+    Exp    7     ③           ← del=7, ret=3
+    Star  11     ⑥           ← del=11, ret=6 (note: could look like a smudged ④ — read carefully)
+    Tmes   3     ②           ← del=3, ret=2
+    The i  1     ①           ← del=1, ret=1
+    GP   114     ㊿③          ← del=114, ret=53
+  Then: Mirror del=7 ret=2, Mail del=12 ret=6, Sun del=8 ret=0, Express del=7 ret=3,
+        Star del=11 ret=6, Times del=3 ret=2, The I del=1 ret=1, GP del=114 ret=53
+  CRITICAL: When a paper has NO circled number on its row, ret=0. Do NOT borrow the next paper's return.
   CRITICAL: Sometimes the first return in the column is scribbled, crossed out, or written differently
   (e.g. a plain number rather than circled, or partially overwritten).
   You MUST still assign it to the FIRST paper title — do NOT skip it and start from the second paper.

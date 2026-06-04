@@ -347,14 +347,7 @@ const DB = {
   async deleteShopWeek(id){
     S.set('shopWeeks', st.shopWeeks);
     if(!getSB()) return;
-    try {
-      console.log('deleteShopWeek: deleting id', id);
-      await sbDelete('shop_weeks', id);
-      console.log('deleteShopWeek: success');
-    } catch(e){
-      console.warn('deleteShopWeek failed:', e.message);
-      toast('⚠ Delete sync failed: ' + e.message);
-    }
+    try { await sbDelete('shop_weeks', id); } catch(e){ console.warn('deleteShopWeek:', e.message); }
   },
 
   async load(){
@@ -467,13 +460,11 @@ const DB = {
           return remote;
         });
 
-        // Keep local weeks not yet in Supabase ONLY if they were created very recently (within 5 minutes)
-        // This prevents deleted weeks from being resurrected from local cache on other devices
+        // Keep local weeks only if created very recently (not yet synced) — prevents deleted weeks reappearing
         const remoteIds = new Set(incoming.map(w => String(w.id)));
         const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
         const localOnly = st.shopWeeks.filter(w => {
-          if(remoteIds.has(String(w.id))) return false; // already in remote
-          // Only keep if ID (timestamp) suggests it was created very recently and not yet synced
+          if(remoteIds.has(String(w.id))) return false;
           const createdAt = parseInt(w.id) || 0;
           return createdAt > fiveMinutesAgo;
         });
@@ -3038,7 +3029,7 @@ The papers section is always at the TOP of the page. Match these handwritten abb
 
   Mirs / Mirr / Mirrr / Mirror        → Mirror
   Mail / Mal / Maol                    → Mail
-  Sun / Sen                            → Sun  ← this is a NEWSPAPER TITLE, not the day Sunday. When "Sun" appears in the papers list with a delivery quantity next to it, it is always the Sun newspaper.
+  Sun / Sen                            → Sun
   Exp / Exps / Expres                  → Express
   Star / Ster                          → Star  ← IMPORTANT: "Star" is a newspaper TITLE, the number next to it is the delivery quantity
   Tnes / Tims / Times / Tes            → Times
@@ -3116,7 +3107,7 @@ PAPERS (top section):
   These large circled numbers next to GP are ALWAYS the GP return quantity — read them carefully.
   Example: "GP  73  ㉜" → del_qty=73, ret_qty=32
   Example: "GP  66  ㊺" → del_qty=66, ret_qty=45
-  Do NOT return null for GP returns when a circled number is clearly present next to GP.
+  Do NOT return null or 0 for GP returns when a circled number is clearly present next to GP.
 
   SEPARATE RETURNS BLOCK (Friday and Saturday only):
   For Friday and Saturday, returns may be written as a SEPARATE LABELLED BLOCK
@@ -3146,73 +3137,20 @@ PAPERS (top section):
 
 
   
-  PAPERS RETURNS — CRITICAL RULES:
-  - Returns for papers appear to the RIGHT of the delivery quantity on the same row
-  - Returns may be plain numbers OR circled numbers — treat BOTH exactly the same
-  - A circled number next to a paper title = the returns quantity for that paper
-  - A circled number in the PAPERS section is ALWAYS a return — it is NEVER a delivery quantity
-  - IMPORTANT: Some days have returns, some do not. A missing return = 0, NOT null
-  - The returns column for papers is a SEPARATE column from magazine returns
-  - The numbers in the papers returns column must NEVER be assigned to magazine prices or quantities
-  - The circled numbers stacked at the bottom of the papers section (e.g. next to GP total)
-    belong ONLY to the papers section — do NOT carry them into the magazines section below
-
-  Example — single column with circled returns:
-    Mirr   6     ③           ← del=6, ret=3 (circled 3 is the return)
-    Mail   £4    ④           ← del=4, ret=4 (£ symbol means crossed-out/amended, read the number)
-    Sun    5                 ← del=5, ret=0
-    Exp    5                 ← del=5, ret=0
-    Star   8                 ← del=8, ret=0
-    Times  £3    ②           ← del=3, ret=2
-    Hei    1                 ← del=1, ret=0
-    GP     73    ㉜           ← del=73, ret=32 (㉜ is a large circled "32" — always read it as the GP return)
-  CRITICAL: GP always has a large circled return number — it may look like ㉜ (32), ㊺ (45), ㊷ (47), (53) etc.
-  These are ALWAYS the GP ret value. Never return 0 or null for GP ret when a circled number is present.
-  Then: Mirr del=6 ret=3, Mail del=4 ret=4, Sun del=5 ret=0, Exp del=5 ret=0,
-        Star del=8 ret=0, Times del=3 ret=2, The I del=1 ret=0, GP del=73 ret=32
-
-  Example — Wednesday page, returns only on lower papers:
-  CRITICAL: The circled returns column does NOT always start at the first paper.
-  It starts at whichever paper first has a return — papers above it have ret=0.
-    Mirr   6                 ← del=6, ret=0 (no circled number level with this row)
-    Mail   4                 ← del=4, ret=0 (no circled number level with this row)
-    Sun    5                 ← del=5, ret=0 (no circled number level with this row)
-    Exp    5     ③           ← del=5, ret=3 (circled stack STARTS here)
-    Star   8     ④           ← del=8, ret=4
-    Tmes   3     ②           ← del=3, ret=2
-    The i  1     ①           ← del=1, ret=1
-    GP    73     ㉜           ← del=73, ret=32
-  Then: Mirror del=6 ret=0, Mail del=4 ret=0, Sun del=5 ret=0, Express del=5 ret=3,
-        Star del=8 ret=4, Times del=3 ret=2, The I del=1 ret=1, GP del=73 ret=32
-  CRITICAL: Match the vertical position of each circled number to the paper on the SAME horizontal line.
-  Do NOT assume the first circled number belongs to the first paper — it belongs to whichever paper is level with it.
-    Mirr   7     ②           ← del=7, ret=2
-    Mad   12     ⑥           ← del=12, ret=6
-    Sun    8                 ← del=8, ret=0 (NO circled number on THIS row — ret=0)
-    Exp    7     ③           ← del=7, ret=3 (the ③ is level with Exp, NOT with Sun)
-    Star  11     ⑥           ← del=11, ret=6
-    Tmes   3     ②           ← del=3, ret=2
-    The i  1     ①           ← del=1, ret=1
-    GP   114     ㊿③          ← del=114, ret=53
-  Then: Mirror del=7 ret=2, Mail del=12 ret=6, Sun del=8 ret=0, Express del=7 ret=3,
-        Star del=11 ret=6, Times del=3 ret=2, The I del=1 ret=1, GP del=114 ret=53
-  CRITICAL: A circled number belongs to the paper title on the EXACT SAME horizontal line.
-  If a circled number appears between two paper rows, it belongs to the LOWER row (closer to it vertically).
-  NEVER assign a return to a paper that has no circled number level with it — use ret=0 instead.
-  Do NOT borrow the next paper's return number just because the current paper has no return.
-  CRITICAL: Sometimes the first return in the column is scribbled, crossed out, or written differently
-  (e.g. a plain number rather than circled, or partially overwritten).
-  You MUST still assign it to the FIRST paper title — do NOT skip it and start from the second paper.
-    Mirr   6     ⑤           ← del=6, ret=5 (even if this looks scribbled, it belongs to Mirror)
-    Maol   5    ③            ← del=5, ret=3
-    Sun    5     ②           ← del=5, ret=2
-    Exp    3     ③           ← del=3, ret=3
-    Star   7     ④           ← del=7, ret=4
-    Tmes   3     ③           ← del=3, ret=3
-    The i  1                 ← del=1, ret=0
-    GP     66    ㊺           ← del=66, ret=45
-  Then: Mirror del=6 ret=5, Mail del=5 ret=3, Sun del=5 ret=2, Express del=3 ret=3,
-        Star del=7 ret=4, Times del=3 ret=3, The I del=1 ret=0, GP del=66 ret=45
+  On some days returns may be plain numbers (not circled).
+  On other days some returns may be circled — treat circled and uncircled the same way.
+  
+  Example — single column:
+    Mirr   7        6
+    Mail   14       4
+    Sun    7
+    Exp    7
+    Star   10       4
+    Times  1
+    The i  1
+    GP     114      50
+  Then: Mirr del=7 ret=6, Mail del=14 ret=4, Sun del=7 ret=0, Exp del=7 ret=0,
+        Star del=10 ret=4, Times del=1 ret=0, The i del=1 ret=0, GP del=114 ret=50
 
   Example — two column layout:
     Mirr  5   (1)  |  Star   6   (1)
@@ -3222,19 +3160,10 @@ PAPERS (top section):
   Then: Mirr del=5 ret=1, Mail del=5 ret=1, Sun del=7 ret=4, Exp del=4 ret=2,
         Star del=6 ret=1, Times del=3 ret=2, The i del=1 ret=0, GP del=69 ret=37
   
-  DAY READING — CRITICAL:
-  Read the day from the page heading ONLY. Common handwritten forms:
-    "Mon" / "Monday"             → "mon"
-    "Tue" / "Tues" / "Tuesday"   → "tue"
-    "Wed" / "Weds" / "Wednesday" → "wed"
-    "Thu" / "Thur" / "Thursday"  → "thu"
-    "Fri" / "Friday"             → "fri"
-    "Sat" / "Saturday"           → "sat"
-    "Sun" / "Sunday"             → "sun"
-  CRITICAL: "Mon" = MONDAY = "mon". If the heading says "Mon 1 June" the date is monday.
-  CRITICAL: "Wed" is WEDNESDAY = "wed". It is NOT Thursday.
-  The page number in the top corner (e.g. "15", "16", "17") is NOT the day — ignore it for day detection.
-  All quantities on that page are for that single day only.
+  The page heading shows the day (e.g. "Tues 26 May" = tue, "Wed 27 May" = wed)
+  CRITICAL: "Wed" = WEDNESDAY = "wed". It is NOT Thursday. "Mon" = MONDAY = "mon".
+  The page number in the top corner (e.g. "15", "16", "17") is NOT the day — ignore it.
+  All quantities on that page are for that single day.
 
 MAGAZINES (lower section, below the papers):
   IMPORTANT: The magazines section is COMPLETELY SEPARATE from the papers section.
@@ -3242,109 +3171,72 @@ MAGAZINES (lower section, below the papers):
   The numbers in the papers returns column (right side of papers section) must NOT
   be assigned to any magazine titles.
 
-════════════════════════════════
-MAGAZINE ROW ALIGNMENT — MOST CRITICAL RULE
-════════════════════════════════
-  Each magazine row contains ALL of its own data on ONE horizontal line:
-    TITLE  [circled ret_qty]  [del_qty]  —  [del_price]
+  Craig's magazine format — TWO possible layouts:
+  
+  LAYOUT A (standard, as seen on Wednesday):
+  TITLE  [circled ret qty]  [del qty] — [del price]
+  - The TITLE is on the left
+  - A CIRCLED number = returns quantity from last week
+  - Then: del_qty — del_price
 
-  You MUST read each row completely and independently before moving to the next.
-  The title ANCHORS the row — use it to lock onto the correct horizontal position.
-  NEVER skip a title. NEVER assign numbers from one row to a different title.
-
-  The circled returns column sits between the title and the delivery quantity.
-  It can appear visually close to the title OR close to the del_qty.
-  ALWAYS assign the circled number to the title on the SAME horizontal line.
-
-  STEP-BY-STEP METHOD — follow this for every magazine row:
-  1. Identify the title text on the left
-  2. Look RIGHT along that exact horizontal line
-  3. Find any circled number → that is ret_qty for THIS title
-  4. Find the delivery quantity (plain number) → del_qty for THIS title
-  5. Find the price after the dash (—) → del_price for THIS title
-  6. Record the complete row BEFORE moving to the next title
-  7. Move down to the next title and repeat
-
-  If you cannot clearly read a value, use null — do NOT borrow a value from another row.
-
-════════════════════════════════
-MAGAZINE RETURNS — CRITICAL
-════════════════════════════════
-  On Wednesday pages, returns are shown as CIRCLED numbers between the title and del_qty.
-  EVERY circled number in the magazine section is a returns quantity — read ALL of them.
-  ret_qty=0 should only appear when there is genuinely NO circled number on that row.
-  Do NOT return ret_qty=0 for every magazine — that means you have missed the returns column entirely.
-
-  Wednesday magazine format (Layout A):
-  TITLE  [circled ret_qty]  [del_qty] — [del_price]
-
-  COMPLETE WEDNESDAY EXAMPLE — read every row exactly like this:
-    "Bella      ③  7  — 180"  → title=Bella,          ret_qty=3,  del_qty=7,  del_price=1.80
-    "Best       ④  4  — 299"  → title=Best,            ret_qty=4,  del_qty=4,  del_price=2.99
-    "Closer     ④  3  — 320"  → title=Closer,          ret_qty=4,  del_qty=3,  del_price=3.20
-    "Hello         2  — 425"  → title=Hello!,          ret_qty=0,  del_qty=2,  del_price=4.25
-    "Inside Soap   4  — 450"  → title=Inside Soap,     ret_qty=0,  del_qty=4,  del_price=4.50
-    IMPORTANT: Inside Soap price is ALWAYS 450=£4.50. Never 2.35 or any other value. 2.35 is My Weekly's price which appears below Inside Soap.
-    "My Weekly  ②  8  — 270"  → title=My Weekly,       ret_qty=2,  del_qty=8,  del_price=2.70
-    IMPORTANT: My Weekly often has a small stray mark or "1" near the title — ignore it. The ② is the ret_qty, 8 is the del_qty.
-    "P Friend      5  — 549"  → title=Peoples Friend,  ret_qty=0,  del_qty=5,  del_price=5.49
-    IMPORTANT: Peoples Friend price is 549=£5.49. It is a HIGH price — do not confuse with a delivery quantity.
-    "R Times    ③  2  — 599"  → title=Radio Times,     ret_qty=3,  del_qty=2,  del_price=5.99
-    IMPORTANT: Radio Times price is ALWAYS 599=£5.99. Never 3.20 or any other value. 3.20 is Closer's price which appears much higher on the page.
-    IMPORTANT: After Radio Times, the next titles in order are Total TV Guide then TV & Streaming Weekly.
-    "Total TV   ②  1  — 450"  → title=Total TV Guide,  ret_qty=2,  del_qty=1,  del_price=4.50
-    IMPORTANT: Total TV Guide price is 450=£4.50. TV & Streaming Weekly price is 85=£0.85 (two digits = pence only).
-    "TV+Stream  ③ 36  —  85"  → title=TV & Streaming Weekly, ret_qty=3, del_qty=36, del_price=0.85
-    "TV Choice  ⑤ 15  —  88"  → title=TV Choice,       ret_qty=5,  del_qty=15, del_price=0.88
-    "U on TV       3  — 190"  → title=Whats On TV Weekly, ret_qty=0, del_qty=3, del_price=1.90
-    "Woman      ③  3  — 190"  → title=Woman,           ret_qty=3,  del_qty=3,  del_price=1.90
-    "W Own         6  — 255"  → title=Womans Own,      ret_qty=0,  del_qty=6,  del_price=2.55
-    "W Weekly   ③  6  — 255"  → title=Womans Weekly,   ret_qty=3,  del_qty=6,  del_price=2.55
-    IMPORTANT: Womans Weekly del_qty is typically 4-8. Price is 255=£2.55. Do NOT confuse with TAB below it.
-    "TAB          14  — 155"  → title=Take A Break,    ret_qty=0,  del_qty=14, del_price=1.55
-    IMPORTANT: TAB/Take A Break del_qty is typically 10-20. Price is 145=£1.45 or 155=£1.55.
-    "Thats Life ④ 10  — 110"  → title=That's Life Weekly, ret_qty=4, del_qty=10, del_price=1.10
-    IMPORTANT: That's Life del_qty is typically 8-14. Price is 110=£1.10. Do NOT confuse with Love It below it.
-    "Love It       3  —  99"  → title=Love It!,        ret_qty=0,  del_qty=3,  del_price=0.99
-    IMPORTANT: Love It! price is 99=£0.99. It appears on Wednesday or Thursday pages. Do NOT skip it.
-
-  CRITICAL PRICE NOTES from the example above:
-  - TV & Streaming: price is "85" = £0.85, NOT £8.50. Two-digit price = pence only (0.XX)
-  - TV Choice: price is "88" = £0.88, NOT £8.80
-  - That's Life: price is "110" = £1.10, NOT £3.20 or any other value
-  - Radio Times: "R Times" or "R Ties" — do NOT skip this title
-  - "U on TV" = Whats On TV Weekly (NOT a separate unknown title)
-  - TAB / Tab = Take A Break (price usually 145=£1.45 or 155=£1.55)
-  - Love It / Love It! always appears near the bottom, price around 99=£0.99
-
-  Layout B (Thursday slash format):
+  LAYOUT B (compact, as seen on Thursday):
   TITLE  [ret qty]  /  [del qty]  —  [del price]
+  - The TITLE is on the left
+  - A plain or circled number on the left = returns quantity
+  - A slash "/" separates returns from delivery
+  - Then: del_qty — del_price
   - Example: "Bella  2 / 5 — 180" means ret_qty=2, del_qty=5, del_price=1.80
   - Example: "TAB  8 / 14 — 145" means ret_qty=8, del_qty=14, del_price=1.45
   - If no number before the slash, ret_qty=0
+  - If no slash at all, treat the number as del_qty and ret_qty=0
 
   Prices are always written without decimal points, but may use different separators:
   - Plain number: 270=2.70, 799=7.99, 1099=10.99, 1999=19.99
-  - With dash: 10-99=10.99, 7-99=7.99, 2-70=2.70
-  - TWO-DIGIT prices: 85=0.85, 88=0.88, 99=0.99 — these are pence-only prices, NOT pounds
+  - With dash: 10-99=10.99, 7-99=7.99, 19-99=19.99, 2-70=2.70
   - The dash is just a separator, NOT a minus sign — always convert to decimal price
+  - Single or double digit before dash = pounds, two digits after = pence
+  - Examples: "10 — 10-99" means del_qty=10, del_price=10.99
+  -           "10 — 799" means del_qty=10, del_price=7.99
+  -           "4 — 19-99" means del_qty=4, del_price=19.99
+  a second price after the delivery price on the same line:
+  
+  Format: TITLE [ret_qty] [del_qty] — [del_price]  [ret_price]
+  
+  Examples:
+    "Woman  (7)  4 — 245  220"  → ret_qty=7, del_qty=4, del_price=2.45, ret_price=2.20
+    "Woman  7 / 4 — 245  220"   → ret_qty=7, del_qty=4, del_price=2.45, ret_price=2.20
+    "Best   3 / 4 — 299  275"   → ret_qty=3, del_qty=4, del_price=2.99, ret_price=2.75
+  
+  If only ONE price appears on the line, use it as BOTH del_price and ret_price.
+  If TWO prices appear on the line (after the dash), the FIRST is del_price, the SECOND is ret_price.
+  Prices are always written without decimal points: 220=2.20, 275=2.75, 245=2.45 etc.
 
-  If TWO prices appear on a line (after the delivery qty dash):
-    Format: TITLE [ret_qty] [del_qty] — [del_price]  [ret_price]
-    "Woman  (7)  4 — 245  220" → ret_qty=7, del_qty=4, del_price=2.45, ret_price=2.20
-  If only ONE price appears, use it as BOTH del_price and ret_price.
+  In BOTH layouts:
+  - Prices are written without decimal points: 270=2.70, 245=2.45, 190=1.90, 750=7.50, 1099=10.99, 350=3.50, 299=2.99, 145=1.45, 320=3.20, 425=4.25, 450=4.50, 99=0.99, 350=3.50, 235=2.35, 550=5.50, 110=1.10, 380=3.80, 85=0.85, 88=0.88, 199=1.99, 230=2.30, 180=1.80
+  - If no return number present, ret_qty=0
 
-  NOTE: "Woman", "W Own" (Womans Own) and "W Weekly" (Womans Weekly) are THREE DIFFERENT titles.
-  "Woman" = Woman magazine (del_qty usually 3-6, price around 1.90)
-  "W Own" / "Womans Own" = Womans Own magazine (del_qty usually 3-8, price around 2.55)
-  "W Weekly" / "W Wkly" = Womans Weekly (del_qty usually 4-8, price usually 2.55)
-  All three may appear on the same page — read each row independently.
+  Examples — Layout A (standard):
+    "P.Friend  (4)  6 — 270"  → title=Peoples Friend, ret_qty=4, del_qty=6, del_price=2.70
+    "Woman     (7)  4 — 245"  → title=Woman, ret_qty=7, del_qty=4, del_price=2.45
+    "W.Own     (1)  6 — 190"  → title=Womans Own, ret_qty=1, del_qty=6, del_price=1.90
+    "Pls Multipack  4 — 750"  → title=FIFA Multipack, ret_qty=0, del_qty=4, del_price=7.50
+    "FIFA Tins      5 — 1099" → title=FIFA Tins, ret_qty=0, del_qty=5, del_price=10.99
 
-  CRITICAL — PRICE CONTAMINATION PREVENTION:
-  The papers section often has a stack of circled return numbers in the right-hand column.
-  These numbers are PAPER RETURNS ONLY — they are NOT magazine prices or quantities.
-  The magazines section begins AFTER a clear gap below the GP/Guernsey Press row.
-  NEVER use any number from the papers section as a magazine price or quantity.
+  Examples — Layout B (slash format):
+    "Bella      2 / 5 — 180"  → title=Bella, ret_qty=2, del_qty=5, del_price=1.80
+    "Best       3 / 4 — 299"  → title=Best, ret_qty=3, del_qty=4, del_price=2.99
+    "Chat       4 / 7 — 145"  → title=Chat, ret_qty=4, del_qty=7, del_price=1.45
+    "TAB        8 / 14 — 145" → title=Take A Break, ret_qty=8, del_qty=14, del_price=1.45
+    "TV Choice  6   36 — 85"  → title=TV Choice, ret_qty=6, del_qty=36, del_price=0.85
+    "TAB fiction feast 3  9 — 350" → title=TAB Fiction Feast, ret_qty=3, del_qty=9, del_price=3.50
+    "Yours      3 / 5 — 230"  → title=Yours, ret_qty=3, del_qty=5, del_price=2.30
+
+  NOTE: "Woman" and "W.Own" (Womans Own) are TWO DIFFERENT titles — do not confuse them.
+  "Woman" abbreviation = Woman magazine (del_qty usually 4-6)
+  "W.Own" or "Womans Own" abbreviation = Womans Own magazine (del_qty usually 4-8)
+
+  CRITICAL: The circled numbers are stacked together in one column — match each one
+  to the magazine title on the SAME horizontal line, not the nearest title.
 
 ════════════════════════════════
 OUTPUT FORMAT
@@ -3372,28 +3264,16 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
             try { data = JSON.parse(rawText); } catch(e) { throw new Error('Bad response: ' + rawText.slice(0,200)); }
             const text = (data.content||[]).filter(x=>x.type==='text').map(x=>x.text).join('');
             const clean = text.replace(/```json|```/g,'').trim();
-            console.log('=== RAW SCAN JSON ===');
-            console.log(clean);
-            console.log('=== END SCAN JSON ===');
             const parsed = JSON.parse(clean);
 
-            // ── DATE SANITY CHECK ────────────────────────────────────────
-            // The AI sometimes misreads 'Mon' as 'sun' due to handwriting similarity.
-            // If the week being scanned runs Mon-Sun and papers have data in the 'sun' columns
-            // but the week's dates suggest it should be a weekday, correct it.
-            // Strategy: if scanned date is 'sun' but the week start (Monday) is within the current week,
-            // and there are no actual Sunday papers in this shop week context, remap sun→mon.
+            // ── DATE SANITY CHECK ─────────────────────────────────────
+            // Correct 'sun' misread of 'Mon' when week starts on Monday
             if(parsed.date === 'sun' && parsed.papers && parsed.papers.length > 0){
-              // Check if any paper has sun_del data
               const hasSunData = parsed.papers.some(p => p.sun_del != null);
               if(hasSunData){
-                // Check week context — if weekStart is a Monday and this is a Mon-Fri shop,
-                // 'sun' with typical weekday quantities is almost certainly 'mon'
                 const wkStart = wk.weekStart ? new Date(wk.weekStart) : null;
-                const wkEnd = wk.weekEnd ? new Date(wk.weekEnd) : null;
-                // If the week has a valid Mon-Sun range, remap sun→mon
                 if(wkStart && wkStart.getDay() === 1){
-                  console.log('Date correction: remapping sun→mon (likely handwriting misread of Mon)');
+                  console.log('Date correction: remapping sun→mon');
                   parsed.date = 'mon';
                   parsed.papers.forEach(p => {
                     p.mon_del = p.sun_del; p.mon_ret = p.sun_ret;
@@ -3427,37 +3307,6 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
               return newStr;
             }
 
-            // ── RETURNS ALIGNMENT CORRECTION ────────────────────────────
-            // The AI sometimes shifts the returns column up by N rows.
-            // Detection: if papers at the top have ret > del, the stack has shifted up.
-            // Fix: find the offset and shift all returns down by that amount.
-            if(parsed.papers && parsed.papers.length > 0){
-              const day = parsed.date;
-              const dayPapers = parsed.papers.filter(p => p[day+'_del'] != null);
-              if(dayPapers.length >= 3){
-                // Find how many leading papers have ret > del (impossible in real life)
-                // or have a return when their delivery is 0
-                let offset = 0;
-                for(let i = 0; i < dayPapers.length - 1; i++){
-                  const del = dayPapers[i][day+'_del'] || 0;
-                  const ret = dayPapers[i][day+'_ret'] || 0;
-                  // GP always has returns so skip it
-                  if((dayPapers[i].title||'').toLowerCase().includes('guernsey')) continue;
-                  // If ret > del, this return doesn't belong here — count as offset
-                  if(ret > 0 && del > 0 && ret > del){ offset++; }
-                  else break;
-                }
-                if(offset > 0){
-                  console.log('Returns alignment: shifting returns down by '+offset+' rows');
-                  // Collect all returns in order
-                  const rets = dayPapers.map(p => p[day+'_ret']);
-                  // Shift down by offset — insert nulls at top, drop from bottom
-                  const shifted = Array(offset).fill(null).concat(rets.slice(0, rets.length - offset));
-                  dayPapers.forEach((p, i) => { p[day+'_ret'] = shifted[i]; });
-                }
-              }
-            }
-
             // Merge papers
             let paperUpdates = 0;
             if(parsed.papers){
@@ -3476,24 +3325,6 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
                     if(updated !== String(wp.days[d].ret||'')){ wp.days[d].ret = updated; paperUpdates++; }
                   }
                 });
-              });
-            }
-
-            // Known price corrections — AI consistently misreads these specific prices
-            const KNOWN_PRICES = {
-              'my weekly': 2.70,
-              'radio times': 5.99,
-            };
-            if(parsed.mags){
-              parsed.mags.forEach(sm => {
-                const key = (sm.title||'').toLowerCase().replace(/[^a-z0-9]/g,' ').trim();
-                for(const [k,v] of Object.entries(KNOWN_PRICES)){
-                  if(key.includes(k) && sm.del_price && sm.del_price !== v){
-                    console.log('Price correction: '+sm.title+' '+sm.del_price+'→'+v);
-                    sm.del_price = v;
-                    if(sm.ret_price) sm.ret_price = v;
-                  }
-                }
               });
             }
 

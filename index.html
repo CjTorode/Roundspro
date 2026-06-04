@@ -2029,6 +2029,55 @@ function rCal(){
 function rModals(){
   const ms=[];
 
+  // ── SCAN RETURNS SHIFT MODAL ─────────────────────────────────
+  if(st._scanReturnsPending){
+    const day = st._scanReturnsDay;
+    const wk = st.shopWeeks.find(w => String(w.id) === String(st._scanReturnsWkId));
+    const papers = wk ? wk.papers.filter(p => p.days[day] && (p.days[day].del||p.days[day].ret)) : [];
+
+    const shiftReturns = (offset) => {
+      if(!wk) return;
+      const nonGP = papers.filter(p => !p.title.toLowerCase().includes('guernsey'));
+      const gp = papers.find(p => p.title.toLowerCase().includes('guernsey'));
+      const rets = nonGP.map(p => parseInt(p.days[day].ret)||0);
+      if(offset > 0){
+        // Shift down: add zeros at top
+        const shifted = Array(offset).fill(0).concat(rets.slice(0, rets.length - offset));
+        nonGP.forEach((p, i) => { p.days[day].ret = String(shifted[i]||0); });
+      } else if(offset < 0){
+        // Shift up: remove from top, add zeros at bottom
+        const shifted = rets.slice(-offset).concat(Array(-offset).fill(0));
+        nonGP.forEach((p, i) => { p.days[day].ret = String(shifted[i]||0); });
+      }
+      st._scanReturnsPending = false;
+      st._doSaveAndFinish && st._doSaveAndFinish();
+    };
+
+    ms.push(h('div',{className:'mo'},
+      h('div',{className:'mb',style:{width:'340px',textAlign:'center'}},
+        h('div',{style:{fontSize:'18px',fontWeight:'bold',marginBottom:'8px'}},'📋 Returns Check'),
+        h('div',{style:{fontSize:'14px',color:'#555',marginBottom:'16px'}},'Are the '+day.toUpperCase()+' paper returns in the right rows?'),
+        h('div',{style:{background:'#f5f0e8',borderRadius:'4px',padding:'10px',marginBottom:'16px',fontSize:'13px',textAlign:'left'}},
+          ...papers.map(p => h('div',{style:{display:'flex',justifyContent:'space-between',padding:'2px 0'}},
+            h('span',{},p.title),
+            h('span',{style:{fontWeight:'bold',color:(parseInt(p.days[day].ret)||0)>0?'#2a5e2a':'#888'}},
+              'ret: '+(p.days[day].ret||'0'))
+          ))
+        ),
+        h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px',marginBottom:'8px'}},
+          h('button',{className:'btn b3',style:{padding:'12px',fontSize:'13px'},onclick:()=>shiftReturns(-1)},'⬆ Shift Up 1'),
+          h('button',{className:'btn b3',style:{padding:'12px',fontSize:'13px'},onclick:()=>shiftReturns(1)},'⬇ Shift Down 1'),
+          h('button',{className:'btn b3',style:{padding:'12px',fontSize:'13px'},onclick:()=>shiftReturns(-2)},'⬆ Shift Up 2'),
+          h('button',{className:'btn b3',style:{padding:'12px',fontSize:'13px'},onclick:()=>shiftReturns(2)},'⬇ Shift Down 2')
+        ),
+        h('button',{className:'btn b5',style:{width:'100%',padding:'14px',fontSize:'15px'},onclick:()=>{
+          st._scanReturnsPending=false;
+          st._doSaveAndFinish && st._doSaveAndFinish();
+        }},'✓ Looks Correct — Save')
+      )
+    ));
+  }
+
   if(st.showAddCustomer){
     const nc=st.newCustomer;
     ms.push(mod('Add New Customer',h('div',{},
@@ -3416,21 +3465,42 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
                 }
               });
             }
-            save();
-            DB._scanInProgress = false;
-            if(toastEl) toastEl.style.display='none';
-            const summaryParts = [];
-            if(paperUpdates > 0) summaryParts.push(paperUpdates+' paper field'+(paperUpdates!==1?'s':''));
-            if(magUpdates > 0) summaryParts.push(magUpdates+' mag'+(magUpdates!==1?'s':''));
-            const summary = summaryParts.length ? ' — updated '+summaryParts.join(' & ') : ' — no new data found';
-            toast('✓ Scan complete'+summary+'. Saving…');
-            try {
-              await DB.saveShopWeeks();
-              toast('✓ Saved — other devices will update within 30 seconds');
-            } catch(e) {
-              toast('⚠ Cloud save failed: ' + e.message);
+            // ── RETURNS SHIFT CONFIRMATION ────────────────────────────
+            // Check if any papers were scanned with returns for this day
+            const scannedDay = parsed.date;
+            const scannedPapers = (parsed.papers||[]).filter(p => p[scannedDay+'_del'] != null);
+            const hasAnyReturns = scannedPapers.some(p => (p[scannedDay+'_ret']||0) > 0);
+
+            const doSaveAndFinish = async () => {
+              save();
+              DB._scanInProgress = false;
+              if(toastEl) toastEl.style.display='none';
+              const summaryParts = [];
+              if(paperUpdates > 0) summaryParts.push(paperUpdates+' paper field'+(paperUpdates!==1?'s':''));
+              if(magUpdates > 0) summaryParts.push(magUpdates+' mag'+(magUpdates!==1?'s':''));
+              const summary = summaryParts.length ? ' — updated '+summaryParts.join(' & ') : ' — no new data found';
+              toast('✓ Scan complete'+summary+'. Saving…');
+              try {
+                await DB.saveShopWeeks();
+                toast('✓ Saved — other devices will update within 30 seconds');
+              } catch(e) {
+                toast('⚠ Cloud save failed: ' + e.message);
+              }
+              render();
+            };
+
+            if(hasAnyReturns){
+              // Show returns shift confirmation modal
+              DB._scanInProgress = false;
+              if(toastEl) toastEl.style.display='none';
+              st._scanReturnsDay = scannedDay;
+              st._scanReturnsWkId = wk.id;
+              st._scanReturnsPending = true;
+              render();
+            } else {
+              await doSaveAndFinish();
             }
-            render();
+            st._doSaveAndFinish = doSaveAndFinish;
           } catch(err) {
             DB._scanInProgress = false;
             if(toastEl) toastEl.style.display='none';

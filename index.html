@@ -3171,6 +3171,21 @@ PAPERS (top section):
   Then: Mirr del=6 ret=3, Mail del=4 ret=4, Sun del=5 ret=0, Exp del=5 ret=0,
         Star del=8 ret=0, Times del=3 ret=2, The I del=1 ret=0, GP del=73 ret=32
 
+  Example — Monday page with scribbled/crossed first return:
+  CRITICAL: Sometimes the first return in the column is scribbled, crossed out, or written differently
+  (e.g. a plain number rather than circled, or partially overwritten).
+  You MUST still assign it to the FIRST paper title — do NOT skip it and start from the second paper.
+    Mirr   6     ⑤           ← del=6, ret=5 (even if this looks scribbled, it belongs to Mirror)
+    Maol   5    ③            ← del=5, ret=3
+    Sun    5     ②           ← del=5, ret=2
+    Exp    3     ③           ← del=3, ret=3
+    Star   7     ④           ← del=7, ret=4
+    Tmes   3     ③           ← del=3, ret=3
+    The i  1                 ← del=1, ret=0
+    GP     66    ㊺           ← del=66, ret=45
+  Then: Mirror del=6 ret=5, Mail del=5 ret=3, Sun del=5 ret=2, Express del=3 ret=3,
+        Star del=7 ret=4, Times del=3 ret=3, The I del=1 ret=0, GP del=66 ret=45
+
   Example — two column layout:
     Mirr  5   (1)  |  Star   6   (1)
     Mail  5   (1)  |  Times  3   (2)

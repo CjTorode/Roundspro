@@ -3139,18 +3139,34 @@ PAPERS (top section):
   
   On some days returns may be plain numbers (not circled).
   On other days some returns may be circled — treat circled and uncircled the same way.
-  
-  Example — single column:
-    Mirr   7        6
-    Mail   14       4
-    Sun    7
-    Exp    7
-    Star   10       4
-    Times  1
-    The i  1
-    GP     114      50
-  Then: Mirr del=7 ret=6, Mail del=14 ret=4, Sun del=7 ret=0, Exp del=7 ret=0,
-        Star del=10 ret=4, Times del=1 ret=0, The i del=1 ret=0, GP del=114 ret=50
+
+  CRITICAL — HOW TO READ RETURNS:
+  Scan each paper row ONE AT A TIME from top to bottom.
+  For each paper, draw an imaginary horizontal line across the page at that paper's height.
+  Only assign a return value if a number (circled or plain) falls within that horizontal band.
+  If no number falls within that band, ret=0 for that paper.
+  Do NOT look at the returns column as a group and assign them top-to-bottom.
+  Each return number belongs to exactly one paper — the one at the same height.
+
+  Example — returns starting mid-list:
+    Mirr   6                 ← scan horizontally: no number at this height → ret=0
+    Mail   4                 ← scan horizontally: no number at this height → ret=0
+    Sun    5                 ← scan horizontally: no number at this height → ret=0
+    Exp    5        ③        ← scan horizontally: ③ is at this height → ret=3
+    Star   8        ④        ← scan horizontally: ④ is at this height → ret=4
+    Times  3        ②        ← scan horizontally: ② is at this height → ret=2
+    The i  1        ①        ← scan horizontally: ① is at this height → ret=1
+    GP    73        ㉜        ← scan horizontally: ㉜ is at this height → ret=32
+
+  Example — returns from top:
+    Mirr   7        ⑥        ← ⑥ at this height → ret=6
+    Mail   12       ⑥        ← ⑥ at this height → ret=6
+    Sun    8                 ← no number at this height → ret=0
+    Exp    7        ③        ← ③ at this height → ret=3
+    Star   11       ⑥        ← ⑥ at this height → ret=6
+    Times  3        ②        ← ② at this height → ret=2
+    The i  1        ①        ← ① at this height → ret=1
+    GP     114      ㊿③      ← large circled 53 at this height → ret=53
 
   Example — two column layout:
     Mirr  5   (1)  |  Star   6   (1)

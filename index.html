@@ -347,7 +347,14 @@ const DB = {
   async deleteShopWeek(id){
     S.set('shopWeeks', st.shopWeeks);
     if(!getSB()) return;
-    try { await sbDelete('shop_weeks', id); } catch(e){ console.warn('deleteShopWeek:', e.message); }
+    try {
+      console.log('deleteShopWeek: deleting id', id);
+      await sbDelete('shop_weeks', id);
+      console.log('deleteShopWeek: success');
+    } catch(e){
+      console.warn('deleteShopWeek failed:', e.message);
+      toast('⚠ Delete sync failed: ' + e.message);
+    }
   },
 
   async load(){
@@ -460,9 +467,16 @@ const DB = {
           return remote;
         });
 
-        // Also keep any local weeks not yet in Supabase
+        // Keep local weeks not yet in Supabase ONLY if they were created very recently (within 5 minutes)
+        // This prevents deleted weeks from being resurrected from local cache on other devices
         const remoteIds = new Set(incoming.map(w => String(w.id)));
-        const localOnly = st.shopWeeks.filter(w => !remoteIds.has(String(w.id)));
+        const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+        const localOnly = st.shopWeeks.filter(w => {
+          if(remoteIds.has(String(w.id))) return false; // already in remote
+          // Only keep if ID (timestamp) suggests it was created very recently and not yet synced
+          const createdAt = parseInt(w.id) || 0;
+          return createdAt > fiveMinutesAgo;
+        });
         st.shopWeeks = [...merged, ...localOnly];
         st.shopWeeks.sort((a,b) => (b.weekEnd||'').localeCompare(a.weekEnd||''));
         S.set('shopWeeks', st.shopWeeks);

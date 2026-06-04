@@ -3174,15 +3174,18 @@ PAPERS (top section):
   Example — Tuesday page, some papers have no return:
     Mirr   7     ②           ← del=7, ret=2
     Mad   12     ⑥           ← del=12, ret=6
-    Sun    8                 ← del=8, ret=0 (NO circled number on this row — ret=0)
-    Exp    7     ③           ← del=7, ret=3
-    Star  11     ⑥           ← del=11, ret=6 (note: could look like a smudged ④ — read carefully)
+    Sun    8                 ← del=8, ret=0 (NO circled number on THIS row — ret=0)
+    Exp    7     ③           ← del=7, ret=3 (the ③ is level with Exp, NOT with Sun)
+    Star  11     ⑥           ← del=11, ret=6
     Tmes   3     ②           ← del=3, ret=2
     The i  1     ①           ← del=1, ret=1
     GP   114     ㊿③          ← del=114, ret=53
   Then: Mirror del=7 ret=2, Mail del=12 ret=6, Sun del=8 ret=0, Express del=7 ret=3,
         Star del=11 ret=6, Times del=3 ret=2, The I del=1 ret=1, GP del=114 ret=53
-  CRITICAL: When a paper has NO circled number on its row, ret=0. Do NOT borrow the next paper's return.
+  CRITICAL: A circled number belongs to the paper title on the EXACT SAME horizontal line.
+  If a circled number appears between two paper rows, it belongs to the LOWER row (closer to it vertically).
+  NEVER assign a return to a paper that has no circled number level with it — use ret=0 instead.
+  Do NOT borrow the next paper's return number just because the current paper has no return.
   CRITICAL: Sometimes the first return in the column is scribbled, crossed out, or written differently
   (e.g. a plain number rather than circled, or partially overwritten).
   You MUST still assign it to the FIRST paper title — do NOT skip it and start from the second paper.

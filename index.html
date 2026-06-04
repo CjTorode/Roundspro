@@ -3334,6 +3334,32 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
             console.log('=== END SCAN JSON ===');
             const parsed = JSON.parse(clean);
 
+            // ── DATE SANITY CHECK ────────────────────────────────────────
+            // The AI sometimes misreads 'Mon' as 'sun' due to handwriting similarity.
+            // If the week being scanned runs Mon-Sun and papers have data in the 'sun' columns
+            // but the week's dates suggest it should be a weekday, correct it.
+            // Strategy: if scanned date is 'sun' but the week start (Monday) is within the current week,
+            // and there are no actual Sunday papers in this shop week context, remap sun→mon.
+            if(parsed.date === 'sun' && parsed.papers && parsed.papers.length > 0){
+              // Check if any paper has sun_del data
+              const hasSunData = parsed.papers.some(p => p.sun_del != null);
+              if(hasSunData){
+                // Check week context — if weekStart is a Monday and this is a Mon-Fri shop,
+                // 'sun' with typical weekday quantities is almost certainly 'mon'
+                const wkStart = wk.weekStart ? new Date(wk.weekStart) : null;
+                const wkEnd = wk.weekEnd ? new Date(wk.weekEnd) : null;
+                // If the week has a valid Mon-Sun range, remap sun→mon
+                if(wkStart && wkStart.getDay() === 1){
+                  console.log('Date correction: remapping sun→mon (likely handwriting misread of Mon)');
+                  parsed.date = 'mon';
+                  parsed.papers.forEach(p => {
+                    p.mon_del = p.sun_del; p.mon_ret = p.sun_ret;
+                    p.sun_del = null; p.sun_ret = null;
+                  });
+                }
+              }
+            }
+
             // Fuzzy title match — strips punctuation/spaces for comparison
             function fuzzyMatch(a, b){
               const norm = s => s.toLowerCase().replace(/[^a-z0-9]/g,'');

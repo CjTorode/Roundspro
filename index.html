@@ -3125,20 +3125,28 @@ PAPERS (top section):
 
 
   
-  On some days returns may be plain numbers (not circled).
-  On other days some returns may be circled — treat circled and uncircled the same way.
-  
-  Example — single column:
-    Mirr   7        6
-    Mail   14       4
-    Sun    7
-    Exp    7
-    Star   10       4
-    Times  1
-    The i  1
-    GP     114      50
-  Then: Mirr del=7 ret=6, Mail del=14 ret=4, Sun del=7 ret=0, Exp del=7 ret=0,
-        Star del=10 ret=4, Times del=1 ret=0, The i del=1 ret=0, GP del=114 ret=50
+  PAPERS RETURNS — CRITICAL RULES:
+  - Returns for papers appear to the RIGHT of the delivery quantity on the same row
+  - Returns may be plain numbers OR circled numbers — treat BOTH exactly the same
+  - A circled number next to a paper title = the returns quantity for that paper
+  - A circled number in the PAPERS section is ALWAYS a return — it is NEVER a delivery quantity
+  - IMPORTANT: Some days have returns, some do not. A missing return = 0, NOT null
+  - The returns column for papers is a SEPARATE column from magazine returns
+  - The numbers in the papers returns column must NEVER be assigned to magazine prices or quantities
+  - The circled numbers stacked at the bottom of the papers section (e.g. next to GP total)
+    belong ONLY to the papers section — do NOT carry them into the magazines section below
+
+  Example — single column with circled returns:
+    Mirr   6     ③           ← del=6, ret=3 (circled 3 is the return)
+    Mail   £4    ④           ← del=4, ret=4 (£ symbol means crossed-out/amended, read the number)
+    Sun    5                 ← del=5, ret=0
+    Exp    5                 ← del=5, ret=0
+    Star   8                 ← del=8, ret=0
+    Times  £3    ②           ← del=3, ret=2
+    Hei    1                 ← del=1, ret=0
+    GP     73    ㉜           ← del=73, ret=32 (circled 32 is the GP return total)
+  Then: Mirr del=6 ret=3, Mail del=4 ret=4, Sun del=5 ret=0, Exp del=5 ret=0,
+        Star del=8 ret=0, Times del=3 ret=2, The I del=1 ret=0, GP del=73 ret=32
 
   Example — two column layout:
     Mirr  5   (1)  |  Star   6   (1)
@@ -3217,9 +3225,21 @@ MAGAZINES (lower section, below the papers):
     "TAB fiction feast 3  9 — 350" → title=TAB Fiction Feast, ret_qty=3, del_qty=9, del_price=3.50
     "Yours      3 / 5 — 230"  → title=Yours, ret_qty=3, del_qty=5, del_price=2.30
 
-  NOTE: "Woman" and "W.Own" (Womans Own) are TWO DIFFERENT titles — do not confuse them.
-  "Woman" abbreviation = Woman magazine (del_qty usually 4-6)
-  "W.Own" or "Womans Own" abbreviation = Womans Own magazine (del_qty usually 4-8)
+  NOTE: "Woman" and "W.Own" (Womans Own) and "W Weekly" (Womans Weekly) are THREE DIFFERENT titles — do not confuse them.
+  "Woman" abbreviation = Woman magazine (del_qty usually 3-6)
+  "W.Own" or "Womans Own" abbreviation = Womans Own magazine (del_qty usually 3-8)
+  "W Weekly" or "W Wkly" or "WW" abbreviation = Womans Weekly magazine (del_qty usually 4-8, price usually 2.55)
+  All three may appear on the same page — read each row independently.
+
+  CRITICAL — PRICE CONTAMINATION PREVENTION:
+  The papers section often has a stack of circled return numbers in the right-hand column
+  (e.g. ③ ④ ② ① ㉜ stacked vertically next to the paper titles).
+  These numbers are PAPER RETURNS ONLY — they are NOT magazine prices, NOT magazine quantities.
+  The magazines section begins AFTER a clear gap below the GP/Guernsey Press row.
+  NEVER use any number from the papers section as a magazine price or quantity.
+  Magazine prices are always to the RIGHT of the magazine del_qty, after a dash (—) or space.
+  Example of what NOT to do: seeing "32" in the papers returns column and using it as That's Life's price.
+  That's Life price is always written as "110" (=£1.10) on the That's Life row itself.
 
   CRITICAL: The circled numbers are stacked together in one column — match each one
   to the magazine title on the SAME horizontal line, not the nearest title.
@@ -3250,6 +3270,9 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
             try { data = JSON.parse(rawText); } catch(e) { throw new Error('Bad response: ' + rawText.slice(0,200)); }
             const text = (data.content||[]).filter(x=>x.type==='text').map(x=>x.text).join('');
             const clean = text.replace(/```json|```/g,'').trim();
+            console.log('=== RAW SCAN JSON ===');
+            console.log(clean);
+            console.log('=== END SCAN JSON ===');
             const parsed = JSON.parse(clean);
 
             // Fuzzy title match — strips punctuation/spaces for comparison

@@ -3316,10 +3316,32 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
                 if(topCount > 0 && midZeros > 0 && hasBottomReturns){
                   const offset = topCount;
                   console.log('Returns alignment correction: shifting down by '+offset+' for day '+day);
-                  // Only shift non-GP papers — GP return is always correct
+                  // Shift only non-GP papers — preserve GP return exactly as scanned
+                  // Collect returns from non-GP papers only
                   const rets = nonGP.map(p => p[day+'_ret'] || 0);
+                  // Shift down by offset: add zeros at top, keep all existing values
+                  // but trim from the END only up to where actual returns exist
                   const shifted = Array(offset).fill(0).concat(rets.slice(0, rets.length - offset));
-                  nonGP.forEach((p, i) => { p[day+'_ret'] = shifted[i]; });
+                  // Find last non-zero return in original to preserve tail values
+                  let lastNonZero = rets.length - 1;
+                  while(lastNonZero > 0 && rets[lastNonZero] === 0) lastNonZero--;
+                  // Only apply shift if it doesn't drop any real return values
+                  const droppedValues = rets.slice(rets.length - offset);
+                  const droppingRealValues = droppedValues.some(v => v > 0);
+                  if(!droppingRealValues){
+                    nonGP.forEach((p, i) => { p[day+'_ret'] = shifted[i]; });
+                  } else {
+                    // Partial shift — only zero out the top papers that definitely have wrong returns
+                    for(let i = 0; i < offset; i++){ nonGP[i][day+'_ret'] = 0; }
+                    // Shift the middle section up to fill the gap
+                    for(let i = offset; i < nonGP.length; i++){
+                      nonGP[i-offset][day+'_ret'] = rets[i];
+                    }
+                    // Zero out the bottom offset papers that were shifted up
+                    for(let i = nonGP.length - offset; i < nonGP.length; i++){
+                      nonGP[i][day+'_ret'] = 0;
+                    }
+                  }
                 }
               }
             }

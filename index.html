@@ -3059,249 +3059,44 @@ function rShop(){
                   role:'user',
                   content:[
                     {type:'image',source:{type:'base64',media_type:'image/jpeg',data:b64}},
-                    {type:'text',text:`This is a handwritten newsagent weekly supply/delivery sheet written by Craig Torode, Guernsey. Read it carefully using ALL of the following rules.
+                    {type:'text',text:`This is a handwritten newsagent invoice from Craig Torode, Guernsey. Read it and return JSON.
 
-════════════════════════════════
-CROSSED OUT / SCRIBBLED NUMBERS
-════════════════════════════════
-Craig sometimes crosses out numbers that were written in error (wrong day etc).
-CRITICAL RULES for crossed out content:
-- Any number that is crossed out, scribbled over, or heavily overwritten = treat as if it does not exist
-- Use null for that field, NOT the crossed-out value
-- Do NOT let crossed-out numbers in the returns column affect your reading of delivery quantities
-- If the entire returns column appears crossed out or scribbled, simply set all ret values to null for that day
-- A crossed out returns column does NOT mean the delivery quantities are wrong — read deliveries normally
-- Crossed out numbers may look like: a number with lines through it, a heavily scribbled circle, or a number overwritten multiple times
+The page has TWO sections:
+1. PAPERS at the top (Mirror, Mail, Sun, Express, Star, Times, The I, Guernsey Press)
+2. MAGAZINES below (various titles listed after a gap)
 
+════════ PAPERS ════════
+Read the day from the heading (Mon/Tue/Wed/Thu/Fri/Sat/Sun). "Wed" = wednesday, NOT thursday.
+The page number in the corner (e.g. 15, 16, 17) is NOT the day.
 
-The papers section is always at the TOP of the page. Match these handwritten abbreviations to the correct full title:
+Each paper row: TITLE  delivery_qty  [return_qty]
+Returns are circled numbers OR plain numbers to the RIGHT of the delivery qty.
+Match each return to the paper on the EXACT SAME horizontal line.
+If no number is on that line, ret=0.
+GP (Guernsey Press) always has the highest delivery (50-100+) and a large circled return like ㉜=32, ㊺=45.
+Crossed out numbers = null.
 
-  Mirs / Mirr / Mirrr / Mirror        → Mirror
-  Mail / Mal / Maol                    → Mail
-  Sun / Sen                            → Sun
-  Exp / Exps / Expres                  → Express
-  Star / Ster                          → Star  ← IMPORTANT: "Star" is a newspaper TITLE, the number next to it is the delivery quantity
-  Tnes / Tims / Times / Tes            → Times
-  The I / The i / Tei / Te i           → The I  ← usually a small number (1-10), NOT the same as GP
-  People / Pple                        → People  (Sunday only)
-  GP / G.P. / Guern Press / Guernsey Press → Guernsey Press  ← ALWAYS the highest delivery number (50-100+)
+════════ MAGAZINES ════════
+Each mag row is on its own LINE of lined paper. Read line by line.
 
-════════════════════════════════
-MAGAZINE TITLE ABBREVIATIONS
-════════════════════════════════
-Magazines are listed BELOW the papers. Match these to full titles:
+Wednesday format: TITLE  [circled_return]  delivery — price
+Thursday format:  TITLE  return / delivery — price
 
-  Bella / Bela                         → Bella
-  Best                                 → Best
-  Chat / Cht / Chdt                    → Chat
-  Closer / Closr / Clser               → Closer
-  Hello / Helo / Helo!                 → Hello!
-  Inside Soap / Insde Sop / Insid Soap → Inside Soap
-  Love It / Love It!                   → Love It!
-  MCN / Mc N / Motor Cyc               → Motor Cycle News
-  My Weekly / My Wekly / My Wkly       → My Weekly
-  P Friend / P Fulen / P Frend / PF    → Peoples Friend
-  Pick Me Up / PMU                     → Pick Me Up
-  Platinum / Plat                      → Platinum
-  R Times / R Ties / R Tmes / RT       → Radio Times
-  Real People / Real Pple              → Real People
-  TAB / TAB3 / Tab 3 / T.A.B           → Take A Break   ← NOT Arrowords
-  TAB Monthly / TAB Mthly / Tab Month  → Take A Break Monthly
-  TAB Arrow / TAB Arrow / TAB Arrwds / TAB Mini → TAB Mini Arrowords Collection
-  Thats Life / Ttds Life / Thts Life / Tlds Life → That's Life Weekly
-  Total TV / Total Tu / Tot TV / TTV   → Total TV Guide
-  TV Stream / Tu Stream / TV & Stream  → TV & Streaming Weekly
-  TV Choice / TV Chice / Tu Chae / TVC → TV Choice
-  Whats on TV / Wlcb on Tu / Whts TV   → Whats On TV Weekly
-  Woman / Wonan / Wom                  → Woman
-  W Own / Womans Own / W Owm           → Womans Own
-  W Weekly / W Wekly / W Wkly / WW     → Womans Weekly
-  Fifa Multipack / FIFA Multipack / Pls Multipack → FIFA Multipack
-  Fifa Tins / FIFA Tins                           → FIFA Tins
-  Fifa Starter / FIFA Starter / Starter Pack      → FIFA Starter Packs
-  Fifa Stickers / FIFA Stickers / Stickers        → FIFA Stickers
-  Fifa Classic / FIFA Classic / Classic Tins      → FIFA Classic Tins
-  Yours / Yous                                    → Yours
-  TAB fiction feast / TAB Fiction / fiction feast / TAB Fict → TAB Fiction Feast
+The title is ALWAYS on the LEFT of the line.
+The circled number (if present) is the return qty.
+The plain number after it is the delivery qty.
+The number after the dash is the price (no decimal point: 270=2.70, 85=0.85, 99=0.99).
+Two-digit prices (85, 88, 99) are pence only = 0.85, 0.88, 0.99.
 
-════════════════════════════════
-READING THE NUMBERS
-════════════════════════════════
-
-PAPERS (top section):
-  Craig's papers are always at the TOP of the page, BEFORE the magazines.
-  
-  IMPORTANT — PAPERS MAY BE IN ONE OR TWO COLUMNS:
-  
-  SINGLE COLUMN (most common):
-  All papers listed vertically down the left side, with delivery qty next to each title,
-  and a returns column stacked on the right side of the page.
-  
-  TWO COLUMN (used when short on space):
-  Papers are split across TWO side-by-side columns spanning the full width of the page.
-  Left column has some papers (e.g. Mirror, Mail, Sun, Exp) with their del qtys and returns.
-  Right column continues with more papers (e.g. Star, Times, The i, GP) with their del qtys and returns.
-  CRITICAL: When you see papers on BOTH the left AND right side of the top section,
-  read BOTH columns as papers. Do NOT treat the right column papers as magazines.
-  The magazines only start BELOW all the papers, after a clear gap.
-  
-  GP TOP-UP DELIVERIES:
-  Sometimes GP has two numbers added together, e.g. "GP  100+ 41" or "GP 68+20"
-  This means a top-up delivery was added to the original — ADD them together for the total del qty.
-  Example: "GP  100+ 41" → del_qty = 141
-  Example: "GP  68+20" → del_qty = 88
-
-  GP RETURNS — LARGE CIRCLED NUMBER:
-  GP always has the highest return quantity, often a large circled number like ㉜ (32), ㊺ (45), ㊷ (47) etc.
-  These large circled numbers next to GP are ALWAYS the GP return quantity — read them carefully.
-  Example: "GP  73  ㉜" → del_qty=73, ret_qty=32
-  Example: "GP  66  ㊺" → del_qty=66, ret_qty=45
-  Do NOT return null or 0 for GP returns when a circled number is clearly present next to GP.
-
-  SEPARATE RETURNS BLOCK (Friday and Saturday only):
-  For Friday and Saturday, returns may be written as a SEPARATE LABELLED BLOCK
-  lower on the same page or on a separate page, headed "Fri Returns", "Sat Returns",
-  "Friday Returns", "Saturday Returns" or similar.
-  
-  The returns block lists paper titles in the same order as the deliveries above,
-  with a circled or plain return quantity next to each title.
-  
-  CRITICAL: When you see a labelled returns block like this:
-    "Sat Returns"
-    Mirr  (7)
-    Mail  (3)
-    Sun   (4)
-    Exp   (4)
-    Star  (7)
-    Times (1)
-    The i (1)
-    GP    (47)
-  
-  Match each return qty to the paper title listed on the SAME ROW in the returns block,
-  then assign it as the ret value for that paper on the correct day (fri or sat).
-  
-  The returns block does NOT affect delivery quantities — those are already set above.
-  If there is BOTH an inline return column (next to deliveries) AND a separate returns block,
-  use the separate returns block values as they are more accurate.
-
-
-  
-  On some days returns may be plain numbers (not circled).
-  On other days some returns may be circled — treat circled and uncircled the same way.
-
-  CRITICAL — HOW TO READ RETURNS:
-  Scan each paper row ONE AT A TIME from top to bottom.
-  For each paper, draw an imaginary horizontal line across the page at that paper's height.
-  Only assign a return value if a number (circled or plain) falls within that horizontal band.
-  If no number falls within that band, ret=0 for that paper.
-  Do NOT look at the returns column as a group and assign them top-to-bottom.
-  Each return number belongs to exactly one paper — the one at the same height.
-
-  Example — returns starting mid-list:
-    Mirr   6                 ← scan horizontally: no number at this height → ret=0
-    Mail   4                 ← scan horizontally: no number at this height → ret=0
-    Sun    5                 ← scan horizontally: no number at this height → ret=0
-    Exp    5        ③        ← scan horizontally: ③ is at this height → ret=3
-    Star   8        ④        ← scan horizontally: ④ is at this height → ret=4
-    Times  3        ②        ← scan horizontally: ② is at this height → ret=2
-    The i  1        ①        ← scan horizontally: ① is at this height → ret=1
-    GP    73        ㉜        ← scan horizontally: ㉜ is at this height → ret=32
-
-  Example — returns from top:
-    Mirr   7        ⑥        ← ⑥ at this height → ret=6
-    Mail   12       ⑥        ← ⑥ at this height → ret=6
-    Sun    8                 ← no number at this height → ret=0
-    Exp    7        ③        ← ③ at this height → ret=3
-    Star   11       ⑥        ← ⑥ at this height → ret=6
-    Times  3        ②        ← ② at this height → ret=2
-    The i  1        ①        ← ① at this height → ret=1
-    GP     114      ㊿③      ← large circled 53 at this height → ret=53
-
-  Example — two column layout:
-    Mirr  5   (1)  |  Star   6   (1)
-    Mail  5   (1)  |  Times  3   (2)
-    Sun   7   (4)  |  The i  1
-    Exp   4   (2)  |  GP     69  (37)
-  Then: Mirr del=5 ret=1, Mail del=5 ret=1, Sun del=7 ret=4, Exp del=4 ret=2,
-        Star del=6 ret=1, Times del=3 ret=2, The i del=1 ret=0, GP del=69 ret=37
-  
-  The page heading shows the day (e.g. "Tues 26 May" = tue, "Wed 27 May" = wed)
-  CRITICAL: "Wed" = WEDNESDAY = "wed". It is NOT Thursday. "Mon" = MONDAY = "mon".
-  The page number in the top corner (e.g. "15", "16", "17") is NOT the day — ignore it.
-  All quantities on that page are for that single day.
-
-MAGAZINES (lower section, below the papers):
-  IMPORTANT: The magazines section is COMPLETELY SEPARATE from the papers section.
-  There is a clear gap between the last paper (GP/Guernsey Press) and the first magazine.
-  The numbers in the papers returns column (right side of papers section) must NOT
-  be assigned to any magazine titles.
-
-  Craig's magazine format — TWO possible layouts:
-  
-  LAYOUT A (standard, as seen on Wednesday):
-  TITLE  [circled ret qty]  [del qty] — [del price]
-  - The TITLE is on the left
-  - A CIRCLED number = returns quantity from last week
-  - Then: del_qty — del_price
-
-  LAYOUT B (compact, as seen on Thursday):
-  TITLE  [ret qty]  /  [del qty]  —  [del price]
-  - The TITLE is on the left
-  - A plain or circled number on the left = returns quantity
-  - A slash "/" separates returns from delivery
-  - Then: del_qty — del_price
-  - Example: "Bella  2 / 5 — 180" means ret_qty=2, del_qty=5, del_price=1.80
-  - Example: "TAB  8 / 14 — 145" means ret_qty=8, del_qty=14, del_price=1.45
-  - If no number before the slash, ret_qty=0
-  - If no slash at all, treat the number as del_qty and ret_qty=0
-
-  Prices are always written without decimal points, but may use different separators:
-  - Plain number: 270=2.70, 799=7.99, 1099=10.99, 1999=19.99
-  - With dash: 10-99=10.99, 7-99=7.99, 19-99=19.99, 2-70=2.70
-  - The dash is just a separator, NOT a minus sign — always convert to decimal price
-  - Single or double digit before dash = pounds, two digits after = pence
-  - Examples: "10 — 10-99" means del_qty=10, del_price=10.99
-  -           "10 — 799" means del_qty=10, del_price=7.99
-  -           "4 — 19-99" means del_qty=4, del_price=19.99
-  a second price after the delivery price on the same line:
-  
-  Format: TITLE [ret_qty] [del_qty] — [del_price]  [ret_price]
-  
-  Examples:
-    "Woman  (7)  4 — 245  220"  → ret_qty=7, del_qty=4, del_price=2.45, ret_price=2.20
-    "Woman  7 / 4 — 245  220"   → ret_qty=7, del_qty=4, del_price=2.45, ret_price=2.20
-    "Best   3 / 4 — 299  275"   → ret_qty=3, del_qty=4, del_price=2.99, ret_price=2.75
-  
-  If only ONE price appears on the line, use it as BOTH del_price and ret_price.
-  If TWO prices appear on the line (after the dash), the FIRST is del_price, the SECOND is ret_price.
-  Prices are always written without decimal points: 220=2.20, 275=2.75, 245=2.45 etc.
-
-  In BOTH layouts:
-  - Prices are written without decimal points: 270=2.70, 245=2.45, 190=1.90, 750=7.50, 1099=10.99, 350=3.50, 299=2.99, 145=1.45, 320=3.20, 425=4.25, 450=4.50, 99=0.99, 350=3.50, 235=2.35, 550=5.50, 110=1.10, 380=3.80, 85=0.85, 88=0.88, 199=1.99, 230=2.30, 180=1.80
-  - If no return number present, ret_qty=0
-
-  Examples — Layout A (standard):
-    "P.Friend  (4)  6 — 270"  → title=Peoples Friend, ret_qty=4, del_qty=6, del_price=2.70
-    "Woman     (7)  4 — 245"  → title=Woman, ret_qty=7, del_qty=4, del_price=2.45
-    "W.Own     (1)  6 — 190"  → title=Womans Own, ret_qty=1, del_qty=6, del_price=1.90
-    "Pls Multipack  4 — 750"  → title=FIFA Multipack, ret_qty=0, del_qty=4, del_price=7.50
-    "FIFA Tins      5 — 1099" → title=FIFA Tins, ret_qty=0, del_qty=5, del_price=10.99
-
-  Examples — Layout B (slash format):
-    "Bella      2 / 5 — 180"  → title=Bella, ret_qty=2, del_qty=5, del_price=1.80
-    "Best       3 / 4 — 299"  → title=Best, ret_qty=3, del_qty=4, del_price=2.99
-    "Chat       4 / 7 — 145"  → title=Chat, ret_qty=4, del_qty=7, del_price=1.45
-    "TAB        8 / 14 — 145" → title=Take A Break, ret_qty=8, del_qty=14, del_price=1.45
-    "TV Choice  6   36 — 85"  → title=TV Choice, ret_qty=6, del_qty=36, del_price=0.85
-    "TAB fiction feast 3  9 — 350" → title=TAB Fiction Feast, ret_qty=3, del_qty=9, del_price=3.50
-    "Yours      3 / 5 — 230"  → title=Yours, ret_qty=3, del_qty=5, del_price=2.30
-
-  NOTE: "Woman" and "W.Own" (Womans Own) are TWO DIFFERENT titles — do not confuse them.
-  "Woman" abbreviation = Woman magazine (del_qty usually 4-6)
-  "W.Own" or "Womans Own" abbreviation = Womans Own magazine (del_qty usually 4-8)
-
-  CRITICAL: The circled numbers are stacked together in one column — match each one
-  to the magazine title on the SAME horizontal line, not the nearest title.
+Title abbreviations:
+Mirr=Mirror, Mal=Mail, Sun=Sun newspaper, Exp=Express, Star=Star, Tmes=Times, The i=The I, GP=Guernsey Press
+Bella=Bella, Best=Best, Closr=Closer, Helo=Hello!, Inside Soap=Inside Soap, Love It=Love It!
+My Wkly=My Weekly, P Friend=Peoples Friend, R Times=Radio Times, TAB=Take A Break
+Thats Life/Tlds Life=That's Life Weekly, Total TV=Total TV Guide, TV Stream=TV & Streaming Weekly
+TV Choice=TV Choice, U on TV/Whats TV=Whats On TV Weekly, Woman=Woman, W Own=Womans Own, W Weekly=Womans Weekly
+MCN=Motor Cycle News, Yours=Yours, Real People=Real People
+FIFA Multipack/Pls Multipack=FIFA Multipack, FIFA Tins=FIFA Tins, FIFA Starter=FIFA Starter Packs
+FIFA Stickers=FIFA Stickers, TAB Fiction=TAB Fiction Feast, TAB Mini/TAB Arrow=TAB Mini Arrowords Collection`}
 
 ════════════════════════════════
 OUTPUT FORMAT
@@ -3489,7 +3284,6 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
               render();
             };
 
-            st._doSaveAndFinish = doSaveAndFinish;
             if(hasAnyReturns){
               // Show returns shift confirmation modal
               DB._scanInProgress = false;
@@ -3501,6 +3295,7 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
             } else {
               await doSaveAndFinish();
             }
+            st._doSaveAndFinish = doSaveAndFinish;
           } catch(err) {
             DB._scanInProgress = false;
             if(toastEl) toastEl.style.display='none';

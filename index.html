@@ -1286,6 +1286,7 @@ function el(tag,attr,...ch){
     if(k==='onclick')e.addEventListener('click',v);
     else if(k==='onchange')e.addEventListener('change',v);
     else if(k==='oninput')e.addEventListener('input',v);
+    else if(k==='onkeydown')e.addEventListener('keydown',v);
     else if(k==='className')e.className=v;
     else if(k==='style'&&typeof v==='object')Object.assign(e.style,v);
     else if(k==='checked'&&tag==='input')e.checked=v;
@@ -3054,7 +3055,7 @@ function rShop(){
               headers:{'Content-Type':'application/json'},
               body: JSON.stringify({
                 model:'claude-sonnet-4-5',
-                max_tokens:4000,
+                max_tokens:2000,
                 messages:[{
                   role:'user',
                   content:[
@@ -3489,7 +3490,6 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
               render();
             };
 
-            st._doSaveAndFinish = doSaveAndFinish;
             if(hasAnyReturns){
               // Show returns shift confirmation modal
               DB._scanInProgress = false;
@@ -3501,6 +3501,7 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
             } else {
               await doSaveAndFinish();
             }
+            st._doSaveAndFinish = doSaveAndFinish;
           } catch(err) {
             DB._scanInProgress = false;
             if(toastEl) toastEl.style.display='none';
@@ -3587,9 +3588,9 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
                 h('td',{style:{padding:'4px 8px',textAlign:'center',color:'#555'}},p.weekPrice.toFixed(2)),
                 ...['mon','tue','wed','thu','fri'].flatMap(d => [
                   h('td',{style:{padding:'2px 3px'}},
-                    h('input',{type:'number',min:'0',style:{width:'44px',padding:'4px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px',background:p.days[d].del?'#fff':'#fafafa'},value:p.days[d].del,oninput:ev=>{p.days[d].del=ev.target.value;saveRender();}})                  ),
+                    h('input',{type:'number',min:'0',style:{width:'44px',padding:'4px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px',background:p.days[d].del?'#fff':'#fafafa'},value:p.days[d].del,onkeydown:shopNavKey,'data-shopnav':'',oninput:ev=>{p.days[d].del=ev.target.value;saveRender();}})                  ),
                   h('td',{style:{padding:'2px 3px'}},
-                    h('input',{type:'number',min:'0',style:{width:'44px',padding:'4px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px',background:p.days[d].ret?'#fffbe6':'#fafafa'},value:p.days[d].ret,oninput:ev=>{p.days[d].ret=ev.target.value;saveRender();}})                  )
+                    h('input',{type:'number',min:'0',style:{width:'44px',padding:'4px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px',background:p.days[d].ret?'#fffbe6':'#fafafa'},value:p.days[d].ret,onkeydown:shopNavKey,'data-shopnav':'',oninput:ev=>{p.days[d].ret=ev.target.value;saveRender();}})                  )
                 ]),
                 h('td',{style:{padding:'4px 8px',textAlign:'right',color:net<0?'#b94040':'#2a5e2a',fontWeight:'bold'}},net),
                 h('td',{style:{padding:'4px 8px',textAlign:'right',fontWeight:'bold'}},rowTotal===0?'—':'£'+rowTotal.toFixed(2))
@@ -3622,8 +3623,8 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
               return h('tr',{style:{background:pi%2===0?'#fff':'#fafafa'}},
                 h('td',{style:{padding:'4px 8px',fontWeight:'bold'}},p.title),
                 h('td',{style:{padding:'4px 8px',textAlign:'center',color:'#555'}},p.satPrice.toFixed(2)),
-                h('td',{style:{padding:'2px 4px'}},h('input',{type:'number',min:'0',style:{width:'60px',padding:'5px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px',background:p.days.sat.del?'#fff':'#fafafa'},value:p.days.sat.del,oninput:ev=>{p.days.sat.del=ev.target.value;saveRender();}})),
-                h('td',{style:{padding:'2px 4px'}},h('input',{type:'number',min:'0',style:{width:'60px',padding:'5px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px',background:p.days.sat.ret?'#fffbe6':'#fafafa'},value:p.days.sat.ret,oninput:ev=>{p.days.sat.ret=ev.target.value;saveRender();}})),
+                h('td',{style:{padding:'2px 4px'}},h('input',{type:'number',min:'0',style:{width:'60px',padding:'5px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px',background:p.days.sat.del?'#fff':'#fafafa'},value:p.days.sat.del,onkeydown:shopNavKey,'data-shopnav':'',oninput:ev=>{p.days.sat.del=ev.target.value;saveRender();}})),
+                h('td',{style:{padding:'2px 4px'}},h('input',{type:'number',min:'0',style:{width:'60px',padding:'5px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px',background:p.days.sat.ret?'#fffbe6':'#fafafa'},value:p.days.sat.ret,onkeydown:shopNavKey,'data-shopnav':'',oninput:ev=>{p.days.sat.ret=ev.target.value;saveRender();}})),
                 h('td',{style:{padding:'4px 8px',textAlign:'right',fontWeight:'bold',color:net<0?'#b94040':'#2a5e2a'}},net),
                 h('td',{style:{padding:'4px 8px',textAlign:'right',fontWeight:'bold'}},(net*p.satPrice)===0?'—':'£'+(net*p.satPrice).toFixed(2))
               );
@@ -3655,8 +3656,8 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
               return h('tr',{style:{background:pi%2===0?'#fff':'#fafafa'}},
                 h('td',{style:{padding:'4px 8px',fontWeight:'bold'}},p.title),
                 h('td',{style:{padding:'4px 8px',textAlign:'center',color:'#555'}},p.sunPrice.toFixed(2)),
-                h('td',{style:{padding:'2px 4px'}},h('input',{type:'number',min:'0',style:{width:'60px',padding:'5px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px',background:p.days.sun.del?'#fff':'#fafafa'},value:p.days.sun.del,oninput:ev=>{p.days.sun.del=ev.target.value;saveRender();}})),
-                h('td',{style:{padding:'2px 4px'}},h('input',{type:'number',min:'0',style:{width:'60px',padding:'5px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px',background:p.days.sun.ret?'#fffbe6':'#fafafa'},value:p.days.sun.ret,oninput:ev=>{p.days.sun.ret=ev.target.value;saveRender();}})),
+                h('td',{style:{padding:'2px 4px'}},h('input',{type:'number',min:'0',style:{width:'60px',padding:'5px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px',background:p.days.sun.del?'#fff':'#fafafa'},value:p.days.sun.del,onkeydown:shopNavKey,'data-shopnav':'',oninput:ev=>{p.days.sun.del=ev.target.value;saveRender();}})),
+                h('td',{style:{padding:'2px 4px'}},h('input',{type:'number',min:'0',style:{width:'60px',padding:'5px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px',background:p.days.sun.ret?'#fffbe6':'#fafafa'},value:p.days.sun.ret,onkeydown:shopNavKey,'data-shopnav':'',oninput:ev=>{p.days.sun.ret=ev.target.value;saveRender();}})),
                 h('td',{style:{padding:'4px 8px',textAlign:'right',fontWeight:'bold',color:net<0?'#b94040':'#2a5e2a'}},net),
                 h('td',{style:{padding:'4px 8px',textAlign:'right',fontWeight:'bold'}},(net*p.sunPrice)===0?'—':'£'+(net*p.sunPrice).toFixed(2))
               );
@@ -3692,10 +3693,10 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
               const cred = (parseFloat(m.retQty)||0)*(parseFloat(m.retPrice)||0);
               return h('tr',{key:mi,style:{background:mi%2===0?'#fff':'#fafafa'}},
                 h('td',{style:{padding:'4px 8px',fontWeight:'bold'}},m.title),
-                h('td',{style:{padding:'2px 4px'}},h('input',{type:'number',min:'0',style:{width:'55px',padding:'4px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px'},value:m.delQty,oninput:ev=>{m.delQty=ev.target.value;saveRender();}})),
+                h('td',{style:{padding:'2px 4px'}},h('input',{type:'number',min:'0',style:{width:'55px',padding:'4px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px'},value:m.delQty,onkeydown:shopNavKey,'data-shopnav':'',oninput:ev=>{m.delQty=ev.target.value;saveRender();}})),
                 h('td',{style:{padding:'2px 4px'}},h('input',{type:'text',inputMode:'decimal',style:{width:'60px',padding:'4px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px'},value:m.delPrice,oninput:ev=>{m.delPrice=ev.target.value;save();}})),
                 h('td',{style:{padding:'4px 8px',textAlign:'right',color:'#2a5e2a',fontWeight:'bold'}},inv?'£'+inv.toFixed(2):'—'),
-                h('td',{style:{padding:'2px 4px'}},h('input',{type:'number',min:'0',style:{width:'55px',padding:'4px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px',background:m.retQty?'#fffbe6':'#fafafa'},value:m.retQty,oninput:ev=>{m.retQty=ev.target.value;saveRender();}})),
+                h('td',{style:{padding:'2px 4px'}},h('input',{type:'number',min:'0',style:{width:'55px',padding:'4px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px',background:m.retQty?'#fffbe6':'#fafafa'},value:m.retQty,onkeydown:shopNavKey,'data-shopnav':'',oninput:ev=>{m.retQty=ev.target.value;saveRender();}})),
                 h('td',{style:{padding:'2px 4px'}},h('input',{type:'text',inputMode:'decimal',style:{width:'60px',padding:'4px',border:'1px solid #ddd',borderRadius:'3px',textAlign:'center',fontFamily:'Georgia,serif',fontSize:'13px',background:m.retQty?'#fffbe6':'#fafafa'},value:m.retPrice,oninput:ev=>{m.retPrice=ev.target.value;save();}})),
                 h('td',{style:{padding:'4px 8px',textAlign:'right',color:'#b94040',fontWeight:'bold'}},cred?'−£'+cred.toFixed(2):'—'),
                 h('td',{style:{padding:'4px 8px',textAlign:'center'}},h('button',{className:'btn',style:{background:'#f0e0e0',color:'#b94040',border:'none',padding:'3px 8px',borderRadius:'3px',fontSize:'12px',cursor:'pointer'},onclick:()=>{wk.mags.splice(mi,1);save();render();}}, '✕'))
@@ -3948,8 +3949,37 @@ function saveShopPDF(wk){
 }
 
 
+// Arrow key / Enter navigation between shop inputs
+function shopNavKey(ev){
+  if(ev.key==='ArrowDown'||ev.key==='Enter'){
+    ev.preventDefault();
+    const all=Array.from(document.querySelectorAll('input[data-shopnav]'));
+    const i=all.indexOf(ev.target);
+    if(i>=0&&i<all.length-1){all[i+1].focus();all[i+1].select();}
+  } else if(ev.key==='ArrowUp'){
+    ev.preventDefault();
+    const all=Array.from(document.querySelectorAll('input[data-shopnav]'));
+    const i=all.indexOf(ev.target);
+    if(i>0){all[i-1].focus();all[i-1].select();}
+  }
+}
+
 function render(){
+  // Preserve focus so typing in inputs isn't interrupted by re-render
+  const _pf=document.activeElement;
+  let _fk=null,_fs=[0,0];
+  if(_pf&&(_pf.tagName==='INPUT'||_pf.tagName==='TEXTAREA')){
+    const _all=Array.from(document.querySelectorAll('input,textarea'));
+    _fk=(_pf.name||_pf.placeholder||'')+':'+_all.indexOf(_pf);
+    try{_fs=[_pf.selectionStart,_pf.selectionEnd];}catch(e){}
+  }
   const app=document.getElementById('app');app.innerHTML='';
+  if(_fk!==null){
+    const _ni=Array.from(document.querySelectorAll('input,textarea'));
+    const _idx=parseInt(_fk.split(':').pop());
+    const _t=_ni[_idx];
+    if(_t){_t.focus();try{_t.setSelectionRange(_fs[0],_fs[1]);}catch(e){}}
+  }
   const tabs=isDriver()?[{k:'customers',i:'👥',l:'Customers'},{k:'rounds',i:'🚲',l:'Rounds'},{k:'billing',i:'£',l:'Billing'}]:[{k:'dashboard',i:'⊞',l:'Dashboard'},{k:'customers',i:'👥',l:'Customers'},{k:'rounds',i:'🚲',l:'Rounds'},{k:'billing',i:'£',l:'Billing'},{k:'stock',i:'📦',l:'Stock'},{k:'calendar',i:'📅',l:'Calendar'},{k:'shop',i:'🏪',l:'Shop'}];
   app.appendChild(h('header',{className:'hdr'},h('div',{className:'hdr-in'},
     h('div',{style:{display:'flex',alignItems:'center',gap:'12px'}},h('span',{style:{fontSize:'28px'}},'🗞'),h('div',{},h('div',{className:'logo-n'},'C J TORODE'),h('div',{className:'logo-s'},'Newsagent'))),

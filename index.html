@@ -3489,6 +3489,7 @@ Use null for any value you cannot read clearly. Never invent or guess a price â€
               render();
             };
 
+            st._doSaveAndFinish = doSaveAndFinish;
             if(hasAnyReturns){
               // Show returns shift confirmation modal
               DB._scanInProgress = false;
@@ -3500,7 +3501,6 @@ Use null for any value you cannot read clearly. Never invent or guess a price â€
             } else {
               await doSaveAndFinish();
             }
-            st._doSaveAndFinish = doSaveAndFinish;
           } catch(err) {
             DB._scanInProgress = false;
             if(toastEl) toastEl.style.display='none';

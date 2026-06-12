@@ -2566,6 +2566,7 @@ function rModals(){
             h('div',{},lbl('Resume from'),h('input',{type:'date',className:'fi',style:{marginBottom:'0'},value:st.pauseUntil||'',onchange:e=>st.pauseUntil=e.target.value}))
           ),
           btn('b2 bf','⏸ Add Pause',()=>{
+            if(!st.pauseTitle) st.pauseTitle=(c.papers&&c.papers[0])||'';
             if(!st.pauseTitle||!st.pauseFrom||!st.pauseUntil){alert('Please select a paper and both dates.');return;}
             if(st.pauseUntil<=st.pauseFrom){alert('Resume date must be after pause date.');return;}
             const pause={title:st.pauseTitle,pauseFrom:st.pauseFrom,pauseUntil:st.pauseUntil};

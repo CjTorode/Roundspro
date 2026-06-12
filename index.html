@@ -964,13 +964,17 @@ function buildInvoiceHTML(c, suppressBalance){
     +'<div class="bt"><strong>Bill To:</strong><br/>'+c.name+'<br/>'+c.address+(c.phone?'<br/>'+c.phone:'')+'</div>';
   var table='';
   var outstanding=(!suppressBalance&&c.balance<0)?Math.abs(c.balance):0;
-  var totalPayable=bill.grandTotal+outstanding;
+  var creditOnAccount=(!suppressBalance&&c.balance>0)?c.balance:0;
+  var totalPayable=bill.grandTotal+outstanding-creditOnAccount;
+  if(totalPayable<0)totalPayable=0;
   if(st.billStyle==='weekly'){
     var wr=buildWeeklyRows(c,getBillingStart(c));
     table='<table><thead><tr><th>Period</th><th>Amount</th></tr></thead><tbody>';
     wr.forEach(function(r){table+='<tr><td>'+r.label+(r.hdays>0?' <em>('+r.hdays+' holiday day'+(r.hdays!==1?'s':'')+' deducted)</em>':'')+'</td><td>'+fmt(r.total)+'</td></tr>';});
     table+='</tbody><tfoot><tr class="gr"><td>This cycle</td><td>'+fmt(bill.grandTotal)+'</td></tr>';
-    if(outstanding>0)table+='<tr class="tr"><td>Previous outstanding</td><td>'+fmt(outstanding)+'</td></tr><tr class="tot"><td>TOTAL TO PAY</td><td>'+fmt(totalPayable)+'</td></tr>';
+    if(creditOnAccount>0)table+='<tr class="tr" style="color:#2a5e2a"><td>Credit on account</td><td style="color:#2a5e2a">&minus;'+fmt(creditOnAccount)+'</td></tr>';
+    if(outstanding>0)table+='<tr class="tr"><td>Previous outstanding</td><td>'+fmt(outstanding)+'</td></tr>';
+    if(outstanding>0||creditOnAccount>0)table+='<tr class="tot"><td>TOTAL TO PAY</td><td>'+fmt(totalPayable)+'</td></tr>';
     table+='</tfoot></table>';
   } else {
     table='<table><thead><tr><th>Description</th><th>Unit</th><th>Qty</th><th>Amount</th>'+(gst?'<th>GST</th>':'')+'</tr></thead><tbody>';
@@ -981,7 +985,9 @@ function buildInvoiceHTML(c, suppressBalance){
     table+='</tbody><tfoot><tr class="tr"><td colspan="3">Subtotal</td><td>'+fmt(bill.subtotal)+'</td>'+(gst?'<td>'+fmt(bill.gstTotal)+'</td>':'')+'</tr>';
     if(gst)table+='<tr class="tr"><td colspan="4">GST @ '+gst+'%</td><td>'+fmt(bill.gstTotal)+'</td></tr>';
     table+='<tr class="gr"><td colspan="'+(gst?4:3)+'">This cycle</td><td colspan="2">'+fmt(bill.grandTotal)+'</td></tr>';
-    if(outstanding>0)table+='<tr class="tr"><td colspan="'+(gst?4:3)+'">Previous outstanding</td><td colspan="2">'+fmt(outstanding)+'</td></tr><tr class="tot"><td colspan="'+(gst?4:3)+'">TOTAL TO PAY</td><td colspan="2">'+fmt(totalPayable)+'</td></tr>';
+    if(creditOnAccount>0)table+='<tr class="tr" style="color:#2a5e2a"><td colspan="'+(gst?4:3)+'">Credit on account</td><td colspan="2" style="color:#2a5e2a">&minus;'+fmt(creditOnAccount)+'</td></tr>';
+    if(outstanding>0)table+='<tr class="tr"><td colspan="'+(gst?4:3)+'">Previous outstanding</td><td colspan="2">'+fmt(outstanding)+'</td></tr>';
+    if(outstanding>0||creditOnAccount>0)table+='<tr class="tot"><td colspan="'+(gst?4:3)+'">TOTAL TO PAY</td><td colspan="2">'+fmt(totalPayable)+'</td></tr>';
     table+='</tfoot></table>';
     if(bill.holidayDays>0)table+='<div class="hol">&#127958; '+bill.holidayDays+' holiday day'+(bill.holidayDays!==1?'s':'')+' deducted &mdash; '+bill.chargeDays+' days charged</div>';
   }
@@ -1027,14 +1033,17 @@ function buildPlainTextBill(c, startOverride, daysOverride, suppressBalance){
   body+=line('To: '+c.name);body+=line('    '+c.address);
   body+=line('Billing Period: '+period);body+=line('');
   const outstanding=(!suppressBalance&&c.balance<0)?Math.abs(c.balance):0;
-  const totalPayable=bill.grandTotal+outstanding;
+  const creditOnAccount=(!suppressBalance&&c.balance>0)?c.balance:0;
+  const totalPayable=Math.max(0,bill.grandTotal+outstanding-creditOnAccount);
   if(st.billStyle==='weekly'){
     const wr=buildWeeklyRows(c,start);
     body+=line('WEEKLY SUMMARY');body+=line(sep);
     wr.forEach(r=>{body+=line(r.label+(r.hdays>0?' ('+r.hdays+' holiday day'+(r.hdays!==1?'s':'')+' deducted)':'')+'   '+fmt(r.total));});
     body+=line(sep);
     body+=line('This cycle'.padEnd(40)+fmt(bill.grandTotal));
-    if(outstanding>0){body+=line('Previous outstanding'.padEnd(40)+fmt(outstanding));body+=line(sep);body+=line('TOTAL TO PAY'.padEnd(40)+fmt(totalPayable));}
+    if(creditOnAccount>0)body+=line('Credit on account'.padEnd(40)+'-'+fmt(creditOnAccount));
+    if(outstanding>0)body+=line('Previous outstanding'.padEnd(40)+fmt(outstanding));
+    if(outstanding>0||creditOnAccount>0){body+=line(sep);body+=line('TOTAL TO PAY'.padEnd(40)+fmt(totalPayable));}
     else body+=line('TOTAL TO PAY'.padEnd(40)+fmt(bill.grandTotal));
   } else {
     body+=line('ITEMISED BILL');body+=line(sep);
@@ -1047,7 +1056,9 @@ function buildPlainTextBill(c, startOverride, daysOverride, suppressBalance){
     body+=line(sep);
     if(gst>0){body+=line('Subtotal'.padEnd(40)+fmt(bill.subtotal));body+=line(('GST @ '+gst+'%').padEnd(40)+fmt(bill.gstTotal));}
     body+=line('This cycle'.padEnd(40)+fmt(bill.grandTotal));
-    if(outstanding>0){body+=line('Previous outstanding'.padEnd(40)+fmt(outstanding));body+=line(sep);body+=line('TOTAL TO PAY'.padEnd(40)+fmt(totalPayable));}
+    if(creditOnAccount>0)body+=line('Credit on account'.padEnd(40)+'-'+fmt(creditOnAccount));
+    if(outstanding>0)body+=line('Previous outstanding'.padEnd(40)+fmt(outstanding));
+    if(outstanding>0||creditOnAccount>0){body+=line(sep);body+=line('TOTAL TO PAY'.padEnd(40)+fmt(totalPayable));}
     else body+=line('TOTAL TO PAY'.padEnd(40)+fmt(bill.grandTotal));
     if(bill.holidayDays>0){body+=line('');body+=line('* '+bill.holidayDays+' holiday day'+(bill.holidayDays!==1?'s':'')+' deducted');}
   }
@@ -1066,7 +1077,8 @@ function buildHTMLEmail(c, startOverride, daysOverride, suppressBalance){
   const period=fds(start)+' – '+fds(rpEnd.toISOString().split('T')[0]);
   const td2=new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});
   const outstanding=(!suppressBalance&&c.balance<0)?Math.abs(c.balance):0;
-  const totalPayable=bill.grandTotal+outstanding;
+  const creditOnAccount=(!suppressBalance&&c.balance>0)?c.balance:0;
+  const totalPayable=Math.max(0,bill.grandTotal+outstanding-creditOnAccount);
 
   const rowStyle='padding:8px 10px;border-bottom:1px solid #e8e0d0;font-size:13px;font-family:Georgia,serif';
   const labelStyle='color:#555;width:60%';
@@ -1093,9 +1105,16 @@ function buildHTMLEmail(c, startOverride, daysOverride, suppressBalance){
   }
   // This cycle total
   rows+=`<tr style="background:#f5f0e8"><td style="${rowStyle};font-weight:bold">This cycle</td><td style="${rowStyle};${amtStyle};font-size:15px">${fmt(bill.grandTotal)}</td></tr>`;
+  if(creditOnAccount>0){
+    rows+=`<tr><td style="${rowStyle};color:#2a5e2a">Credit on account</td><td style="${rowStyle};${amtStyle};color:#2a5e2a">&minus;${fmt(creditOnAccount)}</td></tr>`;
+  }
   if(outstanding>0){
     rows+=`<tr><td style="${rowStyle};${labelStyle}">Previous outstanding</td><td style="${rowStyle};${amtStyle};color:#b94040">${fmt(outstanding)}</td></tr>`;
-    rows+=`<tr style="background:#b94040"><td style="${rowStyle};font-weight:bold;color:#fff;font-size:16px">TOTAL TO PAY</td><td style="${rowStyle};${amtStyle};color:#fff;font-size:16px">${fmt(totalPayable)}</td></tr>`;
+  }
+  if(outstanding>0||creditOnAccount>0){
+    const totalBg=totalPayable===0?'#2a5e2a':'#b94040';
+    const totalLabel=totalPayable===0?'NOTHING DUE — CREDIT CARRIED FORWARD':'TOTAL TO PAY';
+    rows+=`<tr style="background:${totalBg}"><td style="${rowStyle};font-weight:bold;color:#fff;font-size:16px">${totalLabel}</td><td style="${rowStyle};${amtStyle};color:#fff;font-size:16px">${fmt(totalPayable)}</td></tr>`;
   }
 
   const payBlock = biz.paymentInfo
@@ -1830,7 +1849,7 @@ function rBilling(){
           const cu=st.customers.find(c=>c.id===p.customerId);
           return h('div',{style:{display:'flex',justifyContent:'space-between',padding:'8px 0',borderBottom:'1px solid #e8e0d0',fontSize:'14px'}},
             h('div',{},h('div',{style:{fontWeight:'bold',fontSize:'13px'}},cu?cu.name:p.note||'System'),h('div',{style:{fontSize:'11px',color:'#888'}},(p.note||'')+' · '+new Date(p.date).toLocaleDateString('en-GB'))),
-            p.amount>0?h('span',{style:{color:'#2a5e2a',fontWeight:'bold'}},'+'+fmt(p.amount)):null
+            p.amount>0?h('span',{style:{color:'#2a5e2a',fontWeight:'bold'}},'+'+fmt(p.amount)):h('span',{style:{color:'#5a7ec8',fontWeight:'bold'}},'Credit '+fmt(Math.abs(p.amount)))
           );
         }),
         h('div',{style:{marginTop:'12px',paddingTop:'10px',borderTop:'2px solid #1a1a1a',display:'flex',justifyContent:'space-between',fontWeight:'bold'}},
@@ -2258,16 +2277,29 @@ function rModals(){
 
   if(st.showPayment){
     const c=st.customers.find(cu=>cu.id===st.showPayment);
-    if(c)ms.push(mod('Record Payment — '+c.name,h('div',{},
+    const isCredit=st.paymentIsCredit||false;
+    if(c)ms.push(mod((isCredit?'🎁 Record Credit':'💳 Record Payment')+' — '+c.name,h('div',{},
+      // Toggle
+      h('div',{style:{display:'flex',gap:'0',marginBottom:'16px',borderRadius:'4px',overflow:'hidden',border:'1px solid #ccc'}},
+        h('button',{className:'btn',style:{flex:'1',padding:'10px',fontSize:'13px',fontWeight:'bold',borderRadius:'0',
+          background:!isCredit?'#1a1a1a':'#f5f0e8',color:!isCredit?'#c8a84b':'#555',border:'none'},
+          onclick:()=>{st.paymentIsCredit=false;st.paymentNote='';render();}},'💳 Payment'),
+        h('button',{className:'btn',style:{flex:'1',padding:'10px',fontSize:'13px',fontWeight:'bold',borderRadius:'0',
+          background:isCredit?'#2a5e2a':'#f5f0e8',color:isCredit?'#fff':'#555',border:'none',borderLeft:'1px solid #ccc'},
+          onclick:()=>{st.paymentIsCredit=true;st.paymentNote='Credit';render();}},'🎁 Credit')
+      ),
+      isCredit?h('div',{className:'a4',style:{marginBottom:'12px'}},'A credit reduces what the customer owes on their next bill. It will appear on their invoice as "Credit on account".'):null,
       lbl('Amount (£)'),h('input',{type:'number',step:'.01',className:'fi',value:st.paymentAmount,oninput:e=>st.paymentAmount=e.target.value,placeholder:'0.00'}),
-      lbl('Note'),h('input',{type:'text',className:'fi',value:st.paymentNote,oninput:e=>st.paymentNote=e.target.value,placeholder:'e.g. Weekly collection'}),
-      btn('b1 bf','Confirm Payment',()=>{
+      lbl('Note'),h('input',{type:'text',className:'fi',value:st.paymentNote,oninput:e=>st.paymentNote=e.target.value,placeholder:isCredit?'e.g. Overpayment credit':'e.g. Weekly collection'}),
+      h('button',{className:'btn b1 bf',style:{background:isCredit?'#2a5e2a':''},onclick:()=>{
         const amt=parseFloat(st.paymentAmount);if(!amt)return;
-        st.customers=st.customers.map(cu=>cu.id===c.id?{...cu,balance:parseFloat((cu.balance+amt).toFixed(2))}:cu);
-        st.payments=[...st.payments,{id:uuidv4(),customerId:c.id,amount:amt,date:tod(),note:st.paymentNote}];
-        st.showPayment=null;st.paymentAmount='';st.paymentNote='';pa();render();toast('✓ Payment of '+fmt(amt)+' recorded for '+c.name);
-      })
-    ),()=>{st.showPayment=null;render();}));
+        const finalAmt=isCredit?-amt:amt;
+        st.customers=st.customers.map(cu=>cu.id===c.id?{...cu,balance:parseFloat((cu.balance+finalAmt).toFixed(2))}:cu);
+        st.payments=[...st.payments,{id:uuidv4(),customerId:c.id,amount:finalAmt,date:tod(),note:st.paymentNote||(isCredit?'Credit':'')}];
+        st.showPayment=null;st.paymentAmount='';st.paymentNote='';st.paymentIsCredit=false;pa();render();
+        toast(isCredit?'✓ Credit of '+fmt(amt)+' applied to '+c.name:'✓ Payment of '+fmt(amt)+' recorded for '+c.name);
+      }},isCredit?'✓ Apply Credit':'✓ Confirm Payment')
+    ),()=>{st.showPayment=null;st.paymentIsCredit=false;render();}));
   }
 
   if(st.showHoliday){

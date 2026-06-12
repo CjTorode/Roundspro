@@ -238,6 +238,7 @@ const DB = {
         balance: c.balance||0,
         papers: c.papers||[],
         holidays: c.holidays||[],
+        paper_pauses: c.paperPauses||[],
         // paper_log omitted — add column to Supabase if needed
         delivery_charge: c.deliveryCharge||0,
         delivery_note: c.deliveryNote||'',
@@ -375,9 +376,11 @@ const DB = {
         delete r.round_order; // roundOrder managed by applyListOrder()
         delete r.list_order; // listOrder managed by applyListOrder(), not Supabase
         if(r.paper_log !== undefined){ r.paperLog = r.paper_log||[]; delete r.paper_log; }
+        if(r.paper_pauses !== undefined){ r.paperPauses = r.paper_pauses||[]; delete r.paper_pauses; }
         if(!r.papers) r.papers = [];
         if(!r.holidays) r.holidays = [];
         if(!r.paperLog) r.paperLog = [];
+        if(!r.paperPauses) r.paperPauses = [];
         return r;
       }); S.set('customers',st.customers); }
       if(stocks && stocks.length){ st.stock = stocks.map(r=>{

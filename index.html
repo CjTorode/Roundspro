@@ -2393,13 +2393,13 @@ function rModals(){
           const rpEnd=new Date(rpStart);rpEnd.setDate(rpEnd.getDate()+rpDays-1);
           st[periodKey]=fds(rpStart)+' – '+fds(rpEnd.toISOString().split('T')[0]);
         }
-        const html='<!DOCTYPE html><html><head><meta charset="utf-8"><style>'+css+'</style></head><body>'+buildInvoiceHTML(c, isReprint)+'</body></html>';
+        const html='<!DOCTYPE html><html><head><meta charset="utf-8"><style>'+css+'</style></head><body>'+buildInvoiceHTML(c, true)+'</body></html>';
         if(isReprint){st[startKey]=origStart;st[periodKey]=origPeriod;}
         doPrint(html);
       }
       function doEmailBill(){
         if(!c.email){alert('No email address on file for '+c.name+'.');return;}
-        sendBillViaSendGrid(c, isReprint?rpStart:undefined, isReprint?rpDays:undefined, isReprint)
+        sendBillViaSendGrid(c, isReprint?rpStart:undefined, isReprint?rpDays:undefined, true)
           .then(()=>{toast('✓ Invoice sent to '+c.email);st.showBillModal=null;st.reprintStart=null;st.reprintDays=28;render();})
           .catch(err=>{alert('⚠ Failed to send: '+err.message);});
       }

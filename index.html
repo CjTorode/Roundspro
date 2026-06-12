@@ -3397,17 +3397,6 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
               }
             }
 
-            // DEBUG — show what was parsed
-            const paperSummary = (parsed.papers||[]).map(p => {
-              const d = parsed.date;
-              const del = p[d+'_del'];
-              const ret = p[d+'_ret'];
-              if(del==null && ret==null) return null;
-              return p.title+' del:'+(del??'?')+' ret:'+(ret??'?');
-            }).filter(Boolean).join(', ');
-            if(paperSummary) toast('📋 Papers parsed: '+paperSummary);
-            else toast('⚠ No paper data found in scan result for day: '+(parsed.date||'unknown'));
-
             // Fuzzy title match — strips punctuation/spaces for comparison
             function fuzzyMatch(a, b){
               const norm = s => s.toLowerCase().replace(/[^a-z0-9]/g,'');

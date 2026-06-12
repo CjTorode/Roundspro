@@ -2055,22 +2055,26 @@ function rModals(){
     const wk = st.shopWeeks.find(w => String(w.id) === String(st._scanReturnsWkId));
     const papers = wk ? wk.papers.filter(p => p.days[day] && (p.days[day].del||p.days[day].ret)) : [];
 
-    const shiftReturns = (offset) => {
+    const shiftReturns = async (offset) => {
       if(!wk) return;
       const nonGP = papers.filter(p => !p.title.toLowerCase().includes('guernsey'));
       const gp = papers.find(p => p.title.toLowerCase().includes('guernsey'));
       const rets = nonGP.map(p => parseInt(p.days[day].ret)||0);
       if(offset > 0){
-        // Shift down: add zeros at top
         const shifted = Array(offset).fill(0).concat(rets.slice(0, rets.length - offset));
         nonGP.forEach((p, i) => { p.days[day].ret = String(shifted[i]||0); });
       } else if(offset < 0){
-        // Shift up: remove from top, add zeros at bottom
         const shifted = rets.slice(-offset).concat(Array(-offset).fill(0));
         nonGP.forEach((p, i) => { p.days[day].ret = String(shifted[i]||0); });
       }
       st._scanReturnsPending = false;
-      st._doSaveAndFinish && st._doSaveAndFinish();
+      if(st._doSaveAndFinish){
+        await st._doSaveAndFinish();
+      } else {
+        S.set('shopWeeks', st.shopWeeks);
+        try { await DB.saveShopWeeks(); toast('✓ Saved'); } catch(e){ toast('⚠ Save failed: '+e.message); }
+        render();
+      }
     };
 
     ms.push(h('div',{className:'mo'},
@@ -2090,9 +2094,16 @@ function rModals(){
           h('button',{className:'btn b3',style:{padding:'12px',fontSize:'13px'},onclick:()=>shiftReturns(-2)},'⬆ Shift Up 2'),
           h('button',{className:'btn b3',style:{padding:'12px',fontSize:'13px'},onclick:()=>shiftReturns(2)},'⬇ Shift Down 2')
         ),
-        h('button',{className:'btn b5',style:{width:'100%',padding:'14px',fontSize:'15px'},onclick:()=>{
+        h('button',{className:'btn b5',style:{width:'100%',padding:'14px',fontSize:'15px'},onclick:async ()=>{
           st._scanReturnsPending=false;
-          st._doSaveAndFinish && st._doSaveAndFinish();
+          if(st._doSaveAndFinish){
+            await st._doSaveAndFinish();
+          } else {
+            // Fallback: save current state directly
+            S.set('shopWeeks', st.shopWeeks);
+            try { await DB.saveShopWeeks(); toast('✓ Saved'); } catch(e){ toast('⚠ Save failed: '+e.message); }
+            render();
+          }
         }},'✓ Looks Correct — Save')
       )
     ));

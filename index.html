@@ -970,7 +970,7 @@ function buildInvoiceHTML(c, suppressBalance){
     +'<div class="hr"><strong>Date:</strong> '+td+'<br/><strong>Period:</strong> '+(getBillingPeriod(c)||'4-week cycle')+(c.gstExempt?'<br/><em>GST Exempt</em>':'')+'</div></div>'
     +'<div class="bt"><strong>Bill To:</strong><br/>'+c.name+'<br/>'+c.address+(c.phone?'<br/>'+c.phone:'')+'</div>';
   var table='';
-  var outstanding=(!suppressBalance&&c.balance<0)?Math.abs(c.balance):0;
+  var outstanding=(c.balance<0)?Math.abs(c.balance):0;
   var creditOnAccount=(!suppressBalance&&c.balance>0)?c.balance:0;
   var totalPayable=bill.grandTotal+outstanding-creditOnAccount;
   if(totalPayable<0)totalPayable=0;
@@ -1039,7 +1039,7 @@ function buildPlainTextBill(c, startOverride, daysOverride, suppressBalance){
   body+=line('');body+=line('INVOICE');body+=line(sep);
   body+=line('To: '+c.name);body+=line('    '+c.address);
   body+=line('Billing Period: '+period);body+=line('');
-  const outstanding=(!suppressBalance&&c.balance<0)?Math.abs(c.balance):0;
+  const outstanding=(c.balance<0)?Math.abs(c.balance):0;
   const creditOnAccount=(!suppressBalance&&c.balance>0)?c.balance:0;
   const totalPayable=Math.max(0,bill.grandTotal+outstanding-creditOnAccount);
   if(st.billStyle==='weekly'){
@@ -1083,7 +1083,7 @@ function buildHTMLEmail(c, startOverride, daysOverride, suppressBalance){
   const rpEnd=new Date(start); rpEnd.setDate(rpEnd.getDate()+days-1);
   const period=fds(start)+' – '+fds(rpEnd.toISOString().split('T')[0]);
   const td2=new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});
-  const outstanding=(!suppressBalance&&c.balance<0)?Math.abs(c.balance):0;
+  const outstanding=(c.balance<0)?Math.abs(c.balance):0;
   const creditOnAccount=(!suppressBalance&&c.balance>0)?c.balance:0;
   const totalPayable=Math.max(0,bill.grandTotal+outstanding-creditOnAccount);
 

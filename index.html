@@ -1288,7 +1288,12 @@ function exportICS(){
   st.customers.forEach(c=>{(c.holidays||[]).forEach((h)=>{
     if(h.type==='range'&&h.start&&h.end)evs.push(`BEGIN:VEVENT\r\nUID:h-${c.id}-${h.start}-${h.end}@cjt\r\nDTSTAMP:${stamp}\r\nDTSTART;VALUE=DATE:${ics(h.start)}\r\nDTEND;VALUE=DATE:${ics(nxt(h.end))}\r\nSUMMARY:🏖 ${esc(c.name)} Holiday\r\nCATEGORIES:Customer Holiday\r\nEND:VEVENT`);
     else if(h.type==='day'&&h.date)evs.push(`BEGIN:VEVENT\r\nUID:h-${c.id}-${h.date}@cjt\r\nDTSTAMP:${stamp}\r\nDTSTART;VALUE=DATE:${ics(h.date)}\r\nDTEND;VALUE=DATE:${ics(nxt(h.date))}\r\nSUMMARY:🏖 ${esc(c.name)} Holiday (1 day)\r\nCATEGORIES:Customer Holiday\r\nEND:VEVENT`);
-  });});
+  });
+  // Paper pauses
+  (c.paperPauses||[]).forEach(p=>{
+    evs.push(`BEGIN:VEVENT\r\nUID:pp-${c.id}-${p.title}-${p.pauseFrom}@cjt\r\nDTSTAMP:${stamp}\r\nDTSTART;VALUE=DATE:${ics(p.pauseFrom)}\r\nDTEND;VALUE=DATE:${ics(p.pauseUntil)}\r\nSUMMARY:⏸ ${esc(c.name)} — No ${esc(p.title)}\r\nCATEGORIES:Paper Pause\r\nEND:VEVENT`);
+  });
+  });
   st.calEvents.forEach((e)=>{if(!e.date)return;const evUid=e.date+'-'+e.text.replace(/\s+/g,'').toLowerCase();evs.push(`BEGIN:VEVENT\r\nUID:ev-${evUid}@cjt\r\nDTSTAMP:${stamp}\r\nDTSTART;VALUE=DATE:${ics(e.date)}\r\nDTEND;VALUE=DATE:${ics(nxt(e.date))}\r\nSUMMARY:📌 ${esc(e.text)}\r\nCATEGORIES:Shop Event\r\nEND:VEVENT`);});
   const cal=`BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//CJ Torode//EN\r\nX-WR-CALNAME:${esc(st.bizDetails.name||'CJ Torode')}\r\nX-WR-TIMEZONE:Europe/London\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\n${evs.join('\r\n')}\r\nEND:VCALENDAR`;
   const blob=new Blob([cal],{type:'text/calendar;charset=utf-8'});
@@ -2296,28 +2301,42 @@ function rModals(){
   if(st.showPayment){
     const c=st.customers.find(cu=>cu.id===st.showPayment);
     const isCredit=st.paymentIsCredit||false;
-    if(c)ms.push(mod((isCredit?'🎁 Record Credit':'💳 Record Payment')+' — '+c.name,h('div',{},
+    const isAdjust=st.paymentIsAdjust||false;
+    const modalTitle=isAdjust?'⚖ Adjust Balance':isCredit?'🎁 Record Credit':'💳 Record Payment';
+    if(c)ms.push(mod(modalTitle+' — '+c.name,h('div',{},
       // Toggle
       h('div',{style:{display:'flex',gap:'0',marginBottom:'16px',borderRadius:'4px',overflow:'hidden',border:'1px solid #ccc'}},
         h('button',{className:'btn',style:{flex:'1',padding:'10px',fontSize:'13px',fontWeight:'bold',borderRadius:'0',
-          background:!isCredit?'#1a1a1a':'#f5f0e8',color:!isCredit?'#c8a84b':'#555',border:'none'},
-          onclick:()=>{st.paymentIsCredit=false;st.paymentNote='';render();}},'💳 Payment'),
+          background:(!isCredit&&!isAdjust)?'#1a1a1a':'#f5f0e8',color:(!isCredit&&!isAdjust)?'#c8a84b':'#555',border:'none'},
+          onclick:()=>{st.paymentIsCredit=false;st.paymentIsAdjust=false;st.paymentNote='';render();}},'💳 Payment'),
         h('button',{className:'btn',style:{flex:'1',padding:'10px',fontSize:'13px',fontWeight:'bold',borderRadius:'0',
           background:isCredit?'#2a5e2a':'#f5f0e8',color:isCredit?'#fff':'#555',border:'none',borderLeft:'1px solid #ccc'},
-          onclick:()=>{st.paymentIsCredit=true;st.paymentNote='Credit';render();}},'🎁 Credit')
+          onclick:()=>{st.paymentIsCredit=true;st.paymentIsAdjust=false;st.paymentNote='Credit';render();}},'🎁 Credit'),
+        h('button',{className:'btn',style:{flex:'1',padding:'10px',fontSize:'13px',fontWeight:'bold',borderRadius:'0',
+          background:isAdjust?'#444':'#f5f0e8',color:isAdjust?'#fff':'#555',border:'none',borderLeft:'1px solid #ccc'},
+          onclick:()=>{st.paymentIsAdjust=true;st.paymentIsCredit=false;st.paymentNote='Balance adjustment';render();}},'⚖ Adjust')
       ),
       isCredit?h('div',{className:'a4',style:{marginBottom:'12px'}},'A credit reduces what the customer owes on their next bill. It will appear on their invoice as "Credit on account".'):null,
-      lbl('Amount (£)'),h('input',{type:'number',step:'.01',className:'fi',value:st.paymentAmount,oninput:e=>st.paymentAmount=e.target.value,placeholder:'0.00'}),
-      lbl('Note'),h('input',{type:'text',className:'fi',value:st.paymentNote,oninput:e=>st.paymentNote=e.target.value,placeholder:isCredit?'e.g. Overpayment credit':'e.g. Weekly collection'}),
-      h('button',{className:'btn b1 bf',style:{background:isCredit?'#2a5e2a':''},onclick:()=>{
-        const amt=parseFloat(st.paymentAmount);if(!amt)return;
-        const finalAmt=isCredit?-amt:amt;
-        st.customers=st.customers.map(cu=>cu.id===c.id?{...cu,balance:parseFloat((cu.balance+finalAmt).toFixed(2))}:cu);
-        st.payments=[...st.payments,{id:uuidv4(),customerId:c.id,amount:finalAmt,date:tod(),note:st.paymentNote||(isCredit?'Credit':'')}];
-        st.showPayment=null;st.paymentAmount='';st.paymentNote='';st.paymentIsCredit=false;pa();render();
-        toast(isCredit?'✓ Credit of '+fmt(amt)+' applied to '+c.name:'✓ Payment of '+fmt(amt)+' recorded for '+c.name);
-      }},isCredit?'✓ Apply Credit':'✓ Confirm Payment')
-    ),()=>{st.showPayment=null;st.paymentIsCredit=false;render();}));
+      isAdjust?h('div',{className:'a4',style:{marginBottom:'12px',background:'#f0f0f0',borderColor:'#888'}},'Set the exact balance directly. Use a negative number to record a debt (e.g. -18.00 means they owe £18). Use a positive number to set a credit.'):null,
+      isAdjust?lbl('Set balance to (£)'):lbl('Amount (£)'),
+      h('input',{type:'number',step:'.01',className:'fi',value:st.paymentAmount,oninput:e=>st.paymentAmount=e.target.value,placeholder:isAdjust?'e.g. -18.00':'0.00'}),
+      lbl('Note'),h('input',{type:'text',className:'fi',value:st.paymentNote,oninput:e=>st.paymentNote=e.target.value,placeholder:isCredit?'e.g. Overpayment credit':isAdjust?'e.g. Outstanding from previous invoice':'e.g. Weekly collection'}),
+      h('button',{className:'btn b1 bf',style:{background:isCredit?'#2a5e2a':isAdjust?'#444':''},onclick:()=>{
+        const amt=parseFloat(st.paymentAmount);if(isNaN(amt))return;
+        if(isAdjust){
+          // Set balance directly
+          st.customers=st.customers.map(cu=>cu.id===c.id?{...cu,balance:parseFloat(amt.toFixed(2))}:cu);
+          st.payments=[...st.payments,{id:uuidv4(),customerId:c.id,amount:amt-c.balance,date:tod(),note:st.paymentNote||'Balance adjustment'}];
+        } else {
+          if(!amt)return;
+          const finalAmt=isCredit?-amt:amt;
+          st.customers=st.customers.map(cu=>cu.id===c.id?{...cu,balance:parseFloat((cu.balance+finalAmt).toFixed(2))}:cu);
+          st.payments=[...st.payments,{id:uuidv4(),customerId:c.id,amount:finalAmt,date:tod(),note:st.paymentNote||(isCredit?'Credit':'')}];
+        }
+        st.showPayment=null;st.paymentAmount='';st.paymentNote='';st.paymentIsCredit=false;st.paymentIsAdjust=false;pa();render();
+        toast(isAdjust?'⚖ Balance set to '+fmt(Math.abs(amt))+(amt<0?' (owes)':' (credit)'):isCredit?'✓ Credit of '+fmt(amt)+' applied to '+c.name:'✓ Payment of '+fmt(amt)+' recorded for '+c.name);
+      }},isAdjust?'⚖ Set Balance':isCredit?'✓ Apply Credit':'✓ Confirm Payment')
+    ),()=>{st.showPayment=null;st.paymentIsCredit=false;st.paymentIsAdjust=false;render();}));
   }
 
   if(st.showHoliday){

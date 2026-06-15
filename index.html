@@ -1289,9 +1289,24 @@ function exportICS(){
     if(h.type==='range'&&h.start&&h.end)evs.push(`BEGIN:VEVENT\r\nUID:h-${c.id}-${h.start}-${h.end}@cjt\r\nDTSTAMP:${stamp}\r\nDTSTART;VALUE=DATE:${ics(h.start)}\r\nDTEND;VALUE=DATE:${ics(nxt(h.end))}\r\nSUMMARY:🏖 ${esc(c.name)} Holiday\r\nCATEGORIES:Customer Holiday\r\nEND:VEVENT`);
     else if(h.type==='day'&&h.date)evs.push(`BEGIN:VEVENT\r\nUID:h-${c.id}-${h.date}@cjt\r\nDTSTAMP:${stamp}\r\nDTSTART;VALUE=DATE:${ics(h.date)}\r\nDTEND;VALUE=DATE:${ics(nxt(h.date))}\r\nSUMMARY:🏖 ${esc(c.name)} Holiday (1 day)\r\nCATEGORIES:Customer Holiday\r\nEND:VEVENT`);
   });
-  // Paper pauses
+  // Paper pauses — one VEVENT per actual delivery day only
   (c.paperPauses||[]).forEach(p=>{
-    evs.push(`BEGIN:VEVENT\r\nUID:pp-${c.id}-${p.title}-${p.pauseFrom}@cjt\r\nDTSTAMP:${stamp}\r\nDTSTART;VALUE=DATE:${ics(p.pauseFrom)}\r\nDTEND;VALUE=DATE:${ics(p.pauseUntil)}\r\nSUMMARY:⏸ ${esc(c.name)} — No ${esc(p.title)}\r\nCATEGORIES:Paper Pause\r\nEND:VEVENT`);
+    // Find delivery days for this paper title from stock
+    const stockItem=st.stock.find(s=>s.title===p.title);
+    const delivDays=stockItem&&stockItem.deliveryDays&&stockItem.deliveryDays.length?stockItem.deliveryDays:null;
+    // Walk every date in the pause range and emit only on valid delivery days
+    let cur=new Date(p.pauseFrom+'T00:00:00');
+    const end=new Date(p.pauseUntil+'T00:00:00');
+    while(cur<end){
+      const dow=cur.getDay(); // 0=Sun,1=Mon…6=Sat
+      if(!delivDays||delivDays.includes(dow)){
+        const ds=cur.toISOString().slice(0,10);
+        const nxtD=new Date(cur);nxtD.setDate(nxtD.getDate()+1);
+        const dsNxt=nxtD.toISOString().slice(0,10);
+        evs.push(`BEGIN:VEVENT\r\nUID:pp-${c.id}-${p.title}-${ds}@cjt\r\nDTSTAMP:${stamp}\r\nDTSTART;VALUE=DATE:${ics(ds)}\r\nDTEND;VALUE=DATE:${ics(dsNxt)}\r\nSUMMARY:⏸ ${esc(c.name)} — No ${esc(p.title)}\r\nCATEGORIES:Paper Pause\r\nEND:VEVENT`);
+      }
+      cur.setDate(cur.getDate()+1);
+    }
   });
   });
   st.calEvents.forEach((e)=>{if(!e.date)return;const evUid=e.date+'-'+e.text.replace(/\s+/g,'').toLowerCase();evs.push(`BEGIN:VEVENT\r\nUID:ev-${evUid}@cjt\r\nDTSTAMP:${stamp}\r\nDTSTART;VALUE=DATE:${ics(e.date)}\r\nDTEND;VALUE=DATE:${ics(nxt(e.date))}\r\nSUMMARY:📌 ${esc(e.text)}\r\nCATEGORIES:Shop Event\r\nEND:VEVENT`);});
@@ -2625,8 +2640,9 @@ function rModals(){
             ...st.stock.map(s=>h('option',{value:s.title},s.title))
           ),
           btn('b1 bf','Save Change',()=>{
-            if(!st.paperChangeTitle||!st.paperChangeDate){alert('Please select a paper and date.');return;}
-            const entry={title:st.paperChangeTitle,action:st.paperChangeAction,date:st.paperChangeDate};
+            const effectiveTitle=st.paperChangeTitle||(st.stock[0]&&st.stock[0].title)||'';
+            if(!effectiveTitle||!st.paperChangeDate){alert('Please select a paper and date.');return;}
+            const entry={title:effectiveTitle,action:st.paperChangeAction,date:st.paperChangeDate};
             const newLog=[...(c.paperLog||[]),entry];
             const newPapers=papersOnDate({...c,paperLog:newLog},tod());
             st.customers=st.customers.map(cu=>cu.id===c.id?{...cu,paperLog:newLog,papers:newPapers}:cu);

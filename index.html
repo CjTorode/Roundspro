@@ -411,7 +411,7 @@ const DB = {
           st.customers = st.customers.map(c => {
             const m = roundMap[c.id];
             if(!m) return c;
-            return {...c, roundId: m.roundId||c.roundId||null, roundOrder: m.roundOrder||c.roundOrder||0};
+            return {...c, roundId: m.roundId||c.roundId||null, roundOrder: m.roundOrder||c.roundOrder||0, listOrder: m.listOrder||c.listOrder||0};
           });
         }
         // Re-apply hardcoded list order after sync

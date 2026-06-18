@@ -890,11 +890,29 @@ function calcBill(c,start,days){
   if(start){for(var wi=0;wi<Math.round(days/7);wi++){var wStart=new Date(start);wStart.setDate(wStart.getDate()+wi*7);var allHol=true;for(var wd=0;wd<7;wd++){var wDay=new Date(wStart);wDay.setDate(wDay.getDate()+wd);var wDs=wDay.toISOString().split('T')[0];if(!onHoliday(c,wDs)){allHol=false;break;}}if(!allHol)chargeableWeeks++;}}else{chargeableWeeks=Math.round(days/7);}
   const weeks=Math.round(days/7); const dt=c.deliveryCharge*chargeableWeeks; // deduct full holiday weeks
   const dg=!c.gstExempt?dt*(gst/100):0;
-  const gt=lines.reduce(function(s,l){return s+l.gstAmt;},0)+dg;
-  const sub=pt+dt;
+
+  // ── EXTRA ONE-OFF DELIVERIES ─────────────────────────────────────────
+  var extrasInCycle=[];
+  if(start){
+    var cycleEndEx=new Date(start);cycleEndEx.setDate(cycleEndEx.getDate()+days-1);
+    var cycleEndExStr=cycleEndEx.toISOString().split('T')[0];
+    (c.extraDeliveries||[]).forEach(function(ex){
+      if(ex.date>=start&&ex.date<=cycleEndExStr){
+        var item=st.stock.find(function(s){return s.title===ex.title;});
+        var price=item?priceOnDate(item,ex.date):0;
+        var ga=(!c.gstExempt&&item&&item.gstApplicable)?price*(gst/100):0;
+        extrasInCycle.push({title:ex.title,date:ex.date,price:price,gstAmt:ga});
+      }
+    });
+  }
+  var extrasTotal=extrasInCycle.reduce(function(s,e){return s+e.price;},0);
+  var extrasGst=extrasInCycle.reduce(function(s,e){return s+e.gstAmt;},0);
+
+  const gt=lines.reduce(function(s,l){return s+l.gstAmt;},0)+dg+extrasGst;
+  const sub=pt+dt+extrasTotal;
   const total=sub+gt;
   const anyPriceChange=lines.some(function(l){return l.priceChanged;});
-  return{lines,papersTotal:pt,deliveryTotal:dt,deliveryGst:dg,gstTotal:gt,subtotal:sub,grandTotal:total,holidayDays:hd,chargeDays:cd,anyPriceChange};
+  return{lines,papersTotal:pt,deliveryTotal:dt,deliveryGst:dg,gstTotal:gt,subtotal:sub,grandTotal:total,holidayDays:hd,chargeDays:cd,anyPriceChange,extrasInCycle,extrasTotal,extrasGst};
 }
 
 
@@ -988,6 +1006,9 @@ function buildInvoiceHTML(c, suppressBalance){
     bill.lines.forEach(function(l){
       table+='<tr><td>'+l.title+(l.freq==='monthly'?' (monthly)':l.freq==='weekly'?' (weekly)':'')+'</td><td>'+fmt(l.unitPrice)+'</td><td>'+l.label+'</td><td>'+fmt(l.lineTotal)+'</td>'+(gst?'<td>'+(l.gstAmt>0?fmt(l.gstAmt):'&mdash;')+'</td>':'')+'</tr>';
     });
+    (bill.extrasInCycle||[]).forEach(function(ex){
+      table+='<tr><td>'+ex.title+' <em style="font-size:11px;color:#888;">(extra — '+new Date(ex.date+'T12:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short'})+')</em></td><td>'+fmt(ex.price)+'</td><td>1</td><td>'+fmt(ex.price)+'</td>'+(gst?'<td>'+(ex.gstAmt>0?fmt(ex.gstAmt):'&mdash;')+'</td>':'')+'</tr>';
+    });
     table+='<tr><td><em>Delivery</em></td><td>'+fmt(c.deliveryCharge)+'</td><td>'+Math.round(28/7)+' weeks</td><td>'+fmt(bill.deliveryTotal)+'</td>'+(gst?'<td>'+(bill.deliveryGst>0?fmt(bill.deliveryGst):'&mdash;')+'</td>':'')+'</tr>';
     table+='</tbody><tfoot><tr class="tr"><td colspan="3">Subtotal</td><td>'+fmt(bill.subtotal)+'</td>'+(gst?'<td>'+fmt(bill.gstTotal)+'</td>':'')+'</tr>';
     if(gst)table+='<tr class="tr"><td colspan="4">GST @ '+gst+'%</td><td>'+fmt(bill.gstTotal)+'</td></tr>';
@@ -1057,6 +1078,10 @@ function buildPlainTextBill(c, startOverride, daysOverride, suppressBalance){
     bill.lines.forEach(function(l){
       body+=line(l.title.padEnd(28)+l.label.padEnd(12)+fmt(l.lineTotal));
       if(l.gstAmt>0)body+=line('  GST'.padEnd(40)+fmt(l.gstAmt));
+    });
+    (bill.extrasInCycle||[]).forEach(function(ex){
+      body+=line((ex.title+' (extra '+fds(ex.date)+')').padEnd(28)+'1 issue    '+fmt(ex.price));
+      if(ex.gstAmt>0)body+=line('  GST'.padEnd(40)+fmt(ex.gstAmt));
     });
     body+=line(('Delivery (4 weeks)').padEnd(40)+fmt(bill.deliveryTotal));
     if(bill.deliveryGst>0)body+=line('  Delivery GST'.padEnd(40)+fmt(bill.deliveryGst));
@@ -2625,6 +2650,46 @@ function rModals(){
             h('button',{style:{background:'none',border:'none',color:'#b94040',cursor:'pointer',fontSize:'14px'},onclick:()=>{
               const newPauses=(c.paperPauses||[]).filter((_,j)=>j!==i);
               st.customers=st.customers.map(cu=>cu.id===c.id?{...cu,paperPauses:newPauses}:cu);
+              ps('customers');render();
+            }},'✕')
+          ))
+        ):null,
+        // ── ONE-OFF EXTRA DELIVERIES ──────────────────────────────────
+        h('div',{className:'a3',style:{marginBottom:'14px',background:'#f0f8f0',border:'1px solid #80a880'}},
+          h('div',{style:{fontWeight:'bold',fontSize:'12px',textTransform:'uppercase',letterSpacing:'.5px',marginBottom:'10px',color:'#2a5e2a'}},'📰 Log a One-Off Extra'),
+          h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px',marginBottom:'8px'}},
+            h('div',{},lbl('Paper'),
+              h('select',{className:'fi',style:{marginBottom:'0'},value:st.extraTitle||(st.stock[0]&&st.stock[0].title)||'',onchange:e=>st.extraTitle=e.target.value},
+                ...st.stock.map(s=>h('option',{value:s.title},s.title))
+              )
+            ),
+            h('div',{},lbl('Date'),
+              h('input',{type:'date',className:'fi',style:{marginBottom:'0'},value:st.extraDate||tod(),onchange:e=>st.extraDate=e.target.value})
+            )
+          ),
+          btn('b5 bf','📰 Log Extra',()=>{
+            const title=st.extraTitle||(st.stock[0]&&st.stock[0].title)||'';
+            const date=st.extraDate||tod();
+            if(!title){alert('Please select a paper.');return;}
+            const entry={title,date};
+            const newExtras=[...(c.extraDeliveries||[]),entry];
+            st.customers=st.customers.map(cu=>cu.id===c.id?{...cu,extraDeliveries:newExtras}:cu);
+            st.extraTitle='';st.extraDate=tod();
+            ps('customers');render();toast('📰 Extra '+title+' logged for '+fds(date));
+          })
+        ),
+        // Logged extras list
+        (c.extraDeliveries||[]).length?h('div',{style:{marginBottom:'14px'}},
+          h('div',{style:{fontSize:'12px',fontWeight:'bold',textTransform:'uppercase',letterSpacing:'.5px',color:'#555',marginBottom:'8px'}},'Logged Extras'),
+          ...(c.extraDeliveries||[]).slice().sort((a,b)=>b.date.localeCompare(a.date)).map((ex,i)=>h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 0',borderBottom:'1px solid #e8e0d0'}},
+            h('div',{},
+              h('span',{style:{fontSize:'16px',marginRight:'8px'}},'📰'),
+              h('span',{style:{fontWeight:'bold',fontSize:'13px'}},ex.title),
+              h('span',{style:{color:'#888',fontSize:'12px',marginLeft:'8px'}},fds(ex.date))
+            ),
+            h('button',{style:{background:'none',border:'none',color:'#b94040',cursor:'pointer',fontSize:'14px'},onclick:()=>{
+              const newExtras=(c.extraDeliveries||[]).filter((_,j)=>j!==i);
+              st.customers=st.customers.map(cu=>cu.id===c.id?{...cu,extraDeliveries:newExtras}:cu);
               ps('customers');render();
             }},'✕')
           ))

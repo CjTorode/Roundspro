@@ -250,7 +250,7 @@ const DB = {
       await sbUpsert('customers', rows);
       // Also persist roundId/listOrder/roundOrder as a settings entry (since round_id col is uuid type)
       const roundMap = {};
-      st.customers.forEach(c => { roundMap[c.id] = {roundId:c.roundId||null, roundOrder:c.roundOrder||0, listOrder:c.listOrder||0}; });
+      st.customers.forEach(c => { roundMap[c.id] = {roundId:c.roundId||null, roundOrder:c.roundOrder||0, listOrder:c.listOrder||0, extraDeliveries:c.extraDeliveries||[]}; });
       await sbUpsert('settings', [{user_id:USER_ID, key:'customerRoundMap', value:JSON.stringify(roundMap)}]);
     } catch(e){ console.warn('saveCustomers:', e.message); }
     S.set('customers', st.customers);
@@ -411,7 +411,7 @@ const DB = {
           st.customers = st.customers.map(c => {
             const m = roundMap[c.id];
             if(!m) return c;
-            return {...c, roundId: m.roundId||c.roundId||null, roundOrder: m.roundOrder||c.roundOrder||0, listOrder: m.listOrder||c.listOrder||0};
+            return {...c, roundId: m.roundId||c.roundId||null, roundOrder: m.roundOrder||c.roundOrder||0, listOrder: m.listOrder||c.listOrder||0, extraDeliveries: m.extraDeliveries||c.extraDeliveries||[]};
           });
         }
         // Re-apply hardcoded list order after sync

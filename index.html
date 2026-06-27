@@ -636,7 +636,7 @@ const st={
   shopWeeks: S.get('shopWeeks', []),
   shopDiscountPaper: S.get('shopDiscountPaper', 8),
   shopDiscountMag: S.get('shopDiscountMag', 10),
-  shopEmail: S.get('shopEmail', 'Zac@alliance.gg'),
+  shopEmail: S.get('shopEmail', 'Zak@alliance.gg'),
   shopEmail2: S.get('shopEmail2', ''),
   shopFromEmail: S.get('shopFromEmail', 'Craigpapers@icloud.com'),
   sendgridKey: S.get('sendgridKey', ''),
@@ -3981,7 +3981,7 @@ Use null for any value you cannot read clearly. Never invent or guess a price â€
           toast('âœ“ Invoice downloaded');
         }},'â¬‡ Download HTML'),
         h('button',{className:'btn b1',onclick:async ()=>{
-          const toEmail = st.shopEmail || 'Zac@alliance.gg';
+          const toEmail = st.shopEmail || 'Zak@alliance.gg';
           const ccEmail = (st.shopEmail2||'').trim();
           const biz2 = st.bizDetails;
           const subject = 'Invoice '+wk.invoiceNum+' â€” Week Ending '+wk.weekEnd;
@@ -4042,7 +4042,7 @@ Use null for any value you cannot read clearly. Never invent or guess a price â€
         ),
         h('div',{},
           h('label',{className:'fl'},'Invoice To (shop email)'),
-          h('input',{type:'email',className:'fi',value:st.shopEmail,placeholder:'Zac@alliance.gg',oninput:e=>{st.shopEmail=e.target.value;S.set('shopEmail',st.shopEmail);clearTimeout(ps._t);ps._t=setTimeout(()=>DB.saveSettings(),800);}})
+          h('input',{type:'email',className:'fi',value:st.shopEmail,placeholder:'Zak@alliance.gg',oninput:e=>{st.shopEmail=e.target.value;S.set('shopEmail',st.shopEmail);clearTimeout(ps._t);ps._t=setTimeout(()=>DB.saveSettings(),800);}})
         ),
         h('div',{},
           h('label',{className:'fl'},'Also Send To (CC email)'),

@@ -1,7 +1,7 @@
 // netlify/functions/send-email.js
 // Sends a customer invoice email via Resend.
 // Environment variable required: RESEND_API_KEY
-// Set this in Netlify Dashboard â†’ Site â†’ Environment Variables.
+// Set this in Netlify Dashboard → Site → Environment Variables.
 
 exports.handler = async function(event) {
   if (event.httpMethod !== 'POST') {
@@ -23,7 +23,7 @@ exports.handler = async function(event) {
     return { statusCode: 400, body: JSON.stringify({ error: 'Invalid JSON body' }) };
   }
 
-  const { to, subject, html, text, from, fromName } = payload;
+  const { to, cc, subject, html, text, from, fromName } = payload;
   if (!to || !subject || !html) {
     return { statusCode: 400, body: JSON.stringify({ error: 'Missing required fields: to, subject, html' }) };
   }
@@ -39,6 +39,10 @@ exports.handler = async function(event) {
     text: text || 'Please view this email in an HTML-capable client.'
   };
 
+  if (cc) {
+    body.cc = Array.isArray(cc) ? cc : [cc];
+  }
+
   try {
     const resp = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -50,11 +54,9 @@ exports.handler = async function(event) {
     });
 
     const data = await resp.json().catch(() => ({}));
-
     if (resp.ok) {
       return { statusCode: 200, body: JSON.stringify({ ok: true, id: data.id }) };
     }
-
     return {
       statusCode: resp.status,
       body: JSON.stringify({ error: 'Resend error ' + resp.status + ': ' + (data.message || JSON.stringify(data)) })

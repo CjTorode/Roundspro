@@ -1963,7 +1963,7 @@ function rStock(){
           h('button',{className:'btn b3',style:{fontSize:'12px'},onclick:()=>{st.stock=st.stock.map(i=>i.id===s.id?{...i,stock:Math.max(0,i.stock-1)}:i);ps('stock');render();}},'−'),
           h('span',{style:{fontWeight:'bold',minWidth:'22px',textAlign:'center'}},s.stock),
           h('button',{className:'btn b3',style:{fontSize:'12px'},onclick:()=>{st.stock=st.stock.map(i=>i.id===s.id?{...i,stock:i.stock+1}:i);ps('stock');render();}},'+')),
-        btn('b3',{style:{fontSize:'12px',padding:'4px 8px'}},'✏ Edit',()=>{st.editStock={...s};render();})
+        btn('b3',{style:{fontSize:'12px',padding:'4px 8px'}},'✏ Edit',()=>{st.editStock={...s};st.newPriceEntry='';st.newPriceDate=tod();render();})
       );
   }
 
@@ -2319,7 +2319,7 @@ function rModals(){
       ),
       btn('b1 bf',{style:{marginBottom:'12px'}},'+ Record Price Change',()=>{
         const np=parseFloat(st.newPriceEntry);
-        if(!np||!st.newPriceDate){alert('Please enter a price and date.');return;}
+        if(isNaN(np)||!st.newPriceDate){alert('Please enter a price and date.');return;}
         const entry={price:np,date:st.newPriceDate,id:uuidv4()};
         const newLog=[...(st.editStock.priceLog||[]),entry].sort((a,b)=>a.date.localeCompare(b.date));
         // Update current sellPrice if this is the latest entry

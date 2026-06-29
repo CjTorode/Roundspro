@@ -3567,10 +3567,15 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
               const na = norm(a), nb = norm(b);
               // Exact match first
               if(na === nb) return true;
-              // Prevent short tokens matching longer unrelated titles
               const shorter = na.length < nb.length ? na : nb;
-              if(shorter.length <= 2) return na === nb; // must be exact for very short strings
-              return na.includes(nb) || nb.includes(na);
+              const longer = na.length < nb.length ? nb : na;
+              // Prevent short tokens matching longer unrelated titles
+              if(shorter.length <= 2) return false; // must be exact for very short strings
+              // Only allow the substring fallback when the titles are nearly the same length
+              // (covers minor scan/punctuation differences) — otherwise "Woman" would match
+              // "Womans Own" / "Womans Weekly" since it's a text substring of both.
+              if(longer.length - shorter.length > 3) return false;
+              return longer.includes(shorter);
             }
 
             // Smart merge helper — only update a field if:

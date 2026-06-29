@@ -756,7 +756,22 @@ function holDays(c,start,days){
   return n;
 }
 function papersOnDate(c,dateStr){
-  const active=new Set(c.papers||[]);
+  const log=c.paperLog||[];
+  const titles=new Set([...(c.papers||[]), ...log.map(function(e){return e.title;})]);
+  const active=new Set();
+  titles.forEach(function(title){
+    const allEntries=log.filter(function(e){return e.title===title;});
+    if(!allEntries.length){
+      // No add/remove history recorded for this title — fall back to current ticked state
+      if((c.papers||[]).includes(title))active.add(title);
+      return;
+    }
+    const entries=allEntries.filter(function(e){return e.date<=dateStr;}).sort(function(a,b){return a.date.localeCompare(b.date);});
+    if(entries.length&&entries[entries.length-1].action==='add'){
+      active.add(title);
+    }
+    // If the only entries are dated after dateStr, the title wasn't active yet on dateStr
+  });
   // Apply temporary pauses: {title, pauseFrom, pauseUntil}
   // A paper is paused on dateStr if pauseFrom <= dateStr < pauseUntil
   (c.paperPauses||[]).forEach(function(p){
@@ -2582,12 +2597,12 @@ function rModals(){
         const original=st.customers.find(cu=>cu.id===ec.id);
         const oldPapers=original?(original.papers||[]):[];
         const newPapers=ec.papers||[];
-        const cycleStart=getBillingStart(ec);
         var log=[...(ec.paperLog||[])];
-        // Ensure every ticked paper has an "add" entry from cycle start
+        // Ensure every newly ticked paper has an "add" entry dated today —
+        // it should only be charged for from the day it was actually added, not backdated to cycle start
         newPapers.forEach(function(p){
           var hasAdd=log.some(function(e){return e.title===p&&e.action==='add';});
-          if(!hasAdd)log.push({title:p,action:'add',date:cycleStart});
+          if(!hasAdd)log.push({title:p,action:'add',date:tod()});
         });
         // Papers unticked since last save get a remove entry
         oldPapers.forEach(function(p){
@@ -2864,7 +2879,7 @@ function rModals(){
 const SHOP_DAILY = [
   {title:'Mirror',   weekPrice:2.00, satPrice:3.10, sunPrice:3.40},
   {title:'Mail',     weekPrice:1.80, satPrice:2.20, sunPrice:2.80},
-  {title:'Sun',      weekPrice:1.70, satPrice:2.60, sunPrice:3.20},
+  {title:'Sun',      weekPrice:1.90, satPrice:2.80, sunPrice:3.40},
   {title:'Express',  weekPrice:2.00, satPrice:3.00, sunPrice:3.40},
   {title:'Star',     weekPrice:1.50, satPrice:2.10, sunPrice:2.40},
   {title:'Times',    weekPrice:3.40, satPrice:4.50, sunPrice:5.00},

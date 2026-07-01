@@ -3529,6 +3529,19 @@ MAGAZINES (lower section, below the papers):
   CRITICAL: The circled numbers are stacked together in one column — match each one
   to the magazine title on the SAME horizontal line, not the nearest title.
 
+  ⚠ KNOWN ERROR TO AVOID: "Woman" and "Womans Own" sit on consecutive lines with their
+  circled return numbers close together, and their ret/del/price values have been
+  swapped between the two rows before. Before finalizing these two rows specifically:
+  - Trace each circled number back to the exact row height of its title text — do not
+    assume the first circle you see belongs to "Woman" just because it's listed first
+  - Trace each del_qty/price to the exact row height of its title text the same way
+  - Double check: does the "Woman" row's circle line up with "Woman", not "Womans Own"?
+  - If you cannot clearly tell which row a circled number belongs to, use null for that
+    row's ret_qty rather than guessing — a missing return is safer than a swapped one
+
+  This same care applies to any other pair of titles on adjacent lines — always verify
+  row height/alignment before assigning a number, rather than assigning in reading order.
+
 ════════════════════════════════
 OUTPUT FORMAT
 ════════════════════════════════
@@ -3660,7 +3673,16 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
                   wm.delQty = String(sm.del_qty);
                 }
                 // For price — use latest price (may change between deliveries)
-                if(sm.del_price != null && sm.del_price > 0) wm.delPrice = String(sm.del_price);
+                // Sanity check: magazine prices rarely change week to week, so a big jump
+                // from the existing price is a strong signal of a row-swap (e.g. two adjacent
+                // titles' numbers landing on the wrong line) rather than a genuine price change.
+                if(sm.del_price != null && sm.del_price > 0){
+                  const prevPriceNum = parseFloat(wm.delPrice);
+                  if(prevPriceNum && Math.abs(sm.del_price - prevPriceNum) / prevPriceNum > 0.15){
+                    magSkipped.push({title: wm.title, reason: 'price changed from £'+prevPriceNum.toFixed(2)+' to £'+sm.del_price.toFixed(2)+' — please double-check this row'});
+                  }
+                  wm.delPrice = String(sm.del_price);
+                }
                 // For returns — REPLACE not add: returns are a single weekly figure, rescanning to update prices should overwrite
                 if(sm.ret_qty != null && sm.ret_qty > 0){
                   wm.retQty = String(sm.ret_qty);

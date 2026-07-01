@@ -1358,11 +1358,11 @@ function exportICS(){
   toast('📲 Exported — open .ics on your iPhone to import');
 }
 
-function toast(msg){
+function toast(msg,duration){
   const t=document.createElement('div');
-  t.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1a1a1a;color:#c8a84b;padding:12px 24px;border-radius:4px;font-family:Georgia,serif;font-size:13px;z-index:9999;border:1px solid #c8a84b;box-shadow:0 4px 20px rgba(0,0,0,.3)';
+  t.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1a1a1a;color:#c8a84b;padding:12px 24px;border-radius:4px;font-family:Georgia,serif;font-size:13px;z-index:9999;border:1px solid #c8a84b;box-shadow:0 4px 20px rgba(0,0,0,.3);max-width:90vw';
   t.textContent=msg;document.body.appendChild(t);
-  setTimeout(()=>{t.style.opacity='0';t.style.transition='opacity .5s';setTimeout(()=>{try{document.body.removeChild(t);}catch(e){}},500);},2500);
+  setTimeout(()=>{t.style.opacity='0';t.style.transition='opacity .5s';setTimeout(()=>{try{document.body.removeChild(t);}catch(e){}},500);},duration||2500);
 }
 
 // DOM helpers
@@ -3287,7 +3287,20 @@ CRITICAL RULES for crossed out content:
 - Crossed out numbers may look like: a number with lines through it, a heavily scribbled circle, or a number overwritten multiple times
 
 
-The papers section is always at the TOP of the page. Match these handwritten abbreviations to the correct full title:
+════════════════════════════════
+MAGAZINE-ONLY PHOTOS
+════════════════════════════════
+Craig sometimes photographs just the magazines section on its own (cropped, or a
+second page), with NO papers visible at all.
+CRITICAL: If you do NOT see any recognizable paper titles anywhere in the image
+(Mirror, Mail, Sun, Express, Star, Times, The I, People, GP/Guernsey Press),
+then this is a magazine-only photo. In that case:
+- Do NOT force any line into the papers array
+- Return "papers": [] (empty)
+- Treat EVERY title line visible in the image as a magazine entry in "mags"
+- Still try to infer a sensible "date" from any heading/day text if visible, otherwise use null
+
+The papers section, when present, is always at the TOP of the page. Match these handwritten abbreviations to the correct full title:
 
   Mirs / Mirr / Mirrr / Mirror        → Mirror
   Mail / Mal / Maol                    → Mail
@@ -3615,18 +3628,22 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
             // This prevents paper return numbers bleeding into magazine rows
             let magUpdates = 0;
             const knownMagTitles = wk.mags.map(m => m.title);
+            const magSkipped = []; // {title, reason} — surfaced in the toast so failed matches are visible
             if(parsed.mags){
               parsed.mags.forEach(sm => {
                 const hasDelivery = sm.del_qty != null && sm.del_qty > 0;
                 const hasPrice = sm.del_price != null && sm.del_price > 0;
                 // Must have BOTH delivery qty AND price to be a valid magazine entry
-                if(!hasDelivery || !hasPrice) return;
+                if(!hasDelivery || !hasPrice){
+                  magSkipped.push({title: sm.title||'?', reason: 'missing qty/price'});
+                  return;
+                }
                 // Only match against known magazine titles — don't auto-add unknowns
                 // unless they look like FIFA products
                 let wm = wk.mags.find(m => fuzzyMatch(m.title, sm.title));
                 if(!wm){
                   const isFifa = (sm.title||'').toLowerCase().includes('fifa');
-                  if(!isFifa) return; // skip unknown non-FIFA titles
+                  if(!isFifa){ magSkipped.push({title: sm.title||'?', reason: 'no matching title on this week\'s list'}); return; }
                   wm = {title: sm.title, delQty:'', delPrice:'', retQty:'', retPrice:''};
                   wk.mags.push(wm);
                   wk.mags.sort((a,b)=>a.title.localeCompare(b.title));
@@ -3636,10 +3653,11 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
                 const prevDelPrice = wm.delPrice;
                 const prevRetQty = wm.retQty;
                 const prevRetPrice = wm.retPrice;
-                // For quantities — ADD to existing for deliveries (can span multiple delivery days)
+                // For quantities — REPLACE, don't add. Magazines are a single weekly delivery,
+                // so rescanning the same sheet (e.g. to add returns/prices later) must not
+                // double up the quantity that was already recorded earlier.
                 if(sm.del_qty != null && sm.del_qty > 0){
-                  const existing = parseFloat(wm.delQty)||0;
-                  wm.delQty = String(existing + sm.del_qty);
+                  wm.delQty = String(sm.del_qty);
                 }
                 // For price — use latest price (may change between deliveries)
                 if(sm.del_price != null && sm.del_price > 0) wm.delPrice = String(sm.del_price);
@@ -3696,8 +3714,12 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
               const summaryParts = [];
               if(paperUpdates > 0) summaryParts.push(paperUpdates+' paper field'+(paperUpdates!==1?'s':''));
               if(magUpdates > 0) summaryParts.push(magUpdates+' mag'+(magUpdates!==1?'s':''));
-              const summary = summaryParts.length ? ' — updated '+summaryParts.join(' & ') : ' — no new data found';
-              toast('✓ Scan complete'+summary+'. Saving…');
+              let summary = summaryParts.length ? ' — updated '+summaryParts.join(' & ') : ' — no new data found';
+              if(magSkipped.length){
+                const names = magSkipped.map(s=>s.title+' ('+s.reason+')').join(', ');
+                summary += '. Skipped: '+names;
+              }
+              toast('✓ Scan complete'+summary+'. Saving…', magSkipped.length ? 6000 : 2500);
               try {
                 await DB.saveShopWeeks();
                 toast('✓ Saved — other devices will update within 30 seconds');

@@ -627,7 +627,7 @@ const st={
   lastWedCharge:S.get('lastWedCharge',''),
   billStyle:S.get('billStyle','detailed'),
   showSettings:false,showAddCustomer:false,showAddStock:false,editStock:null,
-  showPayment:null,showBill:null,showHoliday:null,showCloseCycle:false,showChargeMonthly:null,showBillModal:null,showEditCustomer:null,showPaperLog:null,
+  showPayment:null,showBill:null,showHoliday:null,showCloseCycle:false,showChargeMonthly:null,showBillModal:null,showEditCustomer:null,showPaperLog:null,showFinalBill:null,finalBillDate:'',
   showAddRound:false,selectedRound:null,selectedDay:null,
   calYear:new Date().getFullYear(),calMonth:new Date().getMonth(),
   search:'',newEvent:'',
@@ -969,6 +969,7 @@ function closeCycle(startKey, periodKey){
   st.customers=st.customers.map(c=>{
     // Only charge this customer if their billing start matches the cycle being closed
     if(getBillingStart(c)!==st[startKey]) return c;
+    if(c.cancelled) return c; // already billed a final bill and account closed
     const b=calcBill(c,st[startKey],28);
     return{...c,balance:parseFloat((c.balance-b.grandTotal).toFixed(2))};
   });
@@ -1000,6 +1001,42 @@ function printAllBills(custList){
 
 function getInvoiceCSS(){
   return '@page{size:A5 portrait;margin:12mm}*{box-sizing:border-box}body{font-family:Georgia,serif;font-size:13px;color:#1a1a1a;margin:0}h1{font-size:20px;margin:0;letter-spacing:1px}.sub{font-size:10px;letter-spacing:3px;text-transform:uppercase;color:#888}.hdr{border-bottom:3px solid #1a1a1a;padding-bottom:8px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:flex-start}.biz{font-size:10px;color:#555;margin-top:4px;line-height:1.5}.hr{text-align:right;font-size:12px;color:#555}.bt{margin-bottom:10px}table{width:100%;border-collapse:collapse;margin:8px 0;font-size:12px}th{background:#1a1a1a;color:#c8a84b;padding:7px 8px;text-align:left;font-size:11px}th:not(:first-child){text-align:right}td{padding:7px 8px;border-bottom:1px solid #e0d8cc}td:not(:first-child){text-align:right}.tr td{font-weight:bold;background:#f5f0e8}.gr td{font-weight:bold;font-size:14px;background:#1a1a1a;color:#c8a84b}.tot td{font-weight:bold;font-size:16px;background:#b94040;color:white}.pay{margin-top:8px;padding:8px 12px;background:#f5f0e8;border:1px solid #c8a84b;border-radius:3px;font-size:12px;line-height:1.7}.hol{margin-top:8px;padding:8px 12px;background:#eef3ff;border:1px solid #5a7ec8;border-radius:3px;font-size:12px}.em{margin-top:10px;padding:10px 12px;border:1px dashed #999;border-radius:3px;font-size:11px;color:#555}.ft{margin-top:10px;font-size:12px;font-weight:bold;border-top:2px solid #1a1a1a;padding-top:6px}html{-webkit-print-color-adjust:exact;print-color-adjust:exact}a[href]:after{content:none!important}@media print{@page{size:A5 portrait;margin:12mm}html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}';
+}
+
+// Build a print-ready FINAL BILL — used when a customer cancels mid-cycle.
+// Unlike buildInvoiceHTML (locked to a 28-day cycle), this bills only the
+// days actually delivered this period, up to the cancellation date.
+function finalBillHTML(c, start, days, cancelDate, bill){
+  var biz=st.bizDetails; var gst=st.gstEnabled?st.gstRate:0;
+  var td=new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});
+  var bi=[biz.address,biz.phone?'Tel: '+biz.phone:'',biz.email?'Email: '+biz.email:''].filter(Boolean).join('<br/>');
+  var pb=biz.paymentInfo?'<div class="pay"><strong>Payment Details:</strong><br/>'+biz.paymentInfo.split('\n').join('<br/>')+'</div>':'';
+  var period=fds(start)+' – '+fds(cancelDate);
+  var hdr='<div class="hdr"><div><h1>&#128240; '+(biz.name||'C J TORODE')+'</h1><div class="sub">Final Bill — Account Closed</div><div class="biz">'+bi+'</div></div>'
+    +'<div class="hr"><strong>Date:</strong> '+td+'<br/><strong>Final Period:</strong> '+period+(c.gstExempt?'<br/><em>GST Exempt</em>':'')+'</div></div>'
+    +'<div class="bt"><strong>Bill To:</strong><br/>'+c.name+'<br/>'+c.address+(c.phone?'<br/>'+c.phone:'')+'</div>';
+  var outstanding=(c.balance<0)?Math.abs(c.balance):0;
+  var creditOnAccount=(c.balance>0)?c.balance:0;
+  var totalPayable=Math.max(0,bill.grandTotal+outstanding-creditOnAccount);
+  var weeks=Math.round(days/7);
+  var table='<table><thead><tr><th>Description</th><th>Unit</th><th>Qty</th><th>Amount</th>'+(gst?'<th>GST</th>':'')+'</tr></thead><tbody>';
+  bill.lines.forEach(function(l){
+    table+='<tr><td>'+l.title+(l.freq==='monthly'?' (monthly)':l.freq==='weekly'?' (weekly)':'')+'</td><td>'+fmt(l.unitPrice)+'</td><td>'+l.label+'</td><td>'+fmt(l.lineTotal)+'</td>'+(gst?'<td>'+(l.gstAmt>0?fmt(l.gstAmt):'&mdash;')+'</td>':'')+'</tr>';
+  });
+  (bill.extrasInCycle||[]).forEach(function(ex){
+    table+='<tr><td>'+ex.title+' <em style="font-size:11px;color:#888;">(extra — '+new Date(ex.date+'T12:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short'})+')</em></td><td>'+fmt(ex.price)+'</td><td>1</td><td>'+fmt(ex.price)+'</td>'+(gst?'<td>'+(ex.gstAmt>0?fmt(ex.gstAmt):'&mdash;')+'</td>':'')+'</tr>';
+  });
+  table+='<tr><td><em>Delivery</em></td><td>'+fmt(c.deliveryCharge)+'</td><td>'+weeks+' week'+(weeks!==1?'s':'')+'</td><td>'+fmt(bill.deliveryTotal)+'</td>'+(gst?'<td>'+(bill.deliveryGst>0?fmt(bill.deliveryGst):'&mdash;')+'</td>':'')+'</tr>';
+  table+='</tbody><tfoot><tr class="tr"><td colspan="3">Subtotal</td><td>'+fmt(bill.subtotal)+'</td>'+(gst?'<td>'+fmt(bill.gstTotal)+'</td>':'')+'</tr>';
+  if(gst)table+='<tr class="tr"><td colspan="4">GST @ '+gst+'%</td><td>'+fmt(bill.gstTotal)+'</td></tr>';
+  table+='<tr class="gr"><td colspan="'+(gst?4:3)+'">Final period</td><td colspan="2">'+fmt(bill.grandTotal)+'</td></tr>';
+  if(creditOnAccount>0)table+='<tr class="tr" style="color:#2a5e2a"><td colspan="'+(gst?4:3)+'">Credit on account</td><td colspan="2" style="color:#2a5e2a">&minus;'+fmt(creditOnAccount)+'</td></tr>';
+  if(outstanding>0)table+='<tr class="tr"><td colspan="'+(gst?4:3)+'">Previous outstanding</td><td colspan="2">'+fmt(outstanding)+'</td></tr>';
+  table+='<tr class="tot"><td colspan="'+(gst?4:3)+'">TOTAL TO PAY</td><td colspan="2">'+fmt(totalPayable)+'</td></tr>';
+  table+='</tfoot></table>';
+  if(bill.holidayDays>0)table+='<div class="hol">&#127958; '+bill.holidayDays+' holiday day'+(bill.holidayDays!==1?'s':'')+' deducted &mdash; '+bill.chargeDays+' days charged</div>';
+  var closeNote='<div style="margin-top:12px;padding:12px 14px;border:1px dashed #999;border-radius:3px;font-size:12px;color:#555;">This account has been closed as of '+fds(cancelDate)+' — no further bills will be issued.</div>';
+  return hdr+table+pb+closeNote+'<div class="ft">Thank you for your custom — '+(biz.name||'C J Torode Newsagent')+'</div>';
 }
 
 function buildInvoiceHTML(c, suppressBalance){
@@ -1107,7 +1144,7 @@ function buildPlainTextBill(c, startOverride, daysOverride, suppressBalance){
       body+=line((ex.title+' (extra '+fds(ex.date)+')').padEnd(28)+'1 issue    '+fmt(ex.price));
       if(ex.gstAmt>0)body+=line('  GST'.padEnd(40)+fmt(ex.gstAmt));
     });
-    body+=line(('Delivery (4 weeks)').padEnd(40)+fmt(bill.deliveryTotal));
+    body+=line(('Delivery ('+Math.round(days/7)+' week'+(Math.round(days/7)!==1?'s':'')+')').padEnd(40)+fmt(bill.deliveryTotal));
     if(bill.deliveryGst>0)body+=line('  Delivery GST'.padEnd(40)+fmt(bill.deliveryGst));
     body+=line(sep);
     if(gst>0){body+=line('Subtotal'.padEnd(40)+fmt(bill.subtotal));body+=line(('GST @ '+gst+'%').padEnd(40)+fmt(bill.gstTotal));}
@@ -1559,7 +1596,8 @@ function rCustomers(){
               h('span',{className:'tag tag-g'},'🚚 '+fmt(c.deliveryCharge)+'/week'),
               r?h('span',{className:'tag tag-b'},'🚲 '+r.name):null,
               c.gstExempt?h('span',{className:'tag tag-r'},'GST Exempt'):null,
-              onH?h('span',{className:'tag tag-b'},'🏖 On Holiday'):null
+              onH?h('span',{className:'tag tag-b'},'🏖 On Holiday'):null,
+              c.cancelled?h('span',{className:'tag',style:{background:'#7a3030',color:'#fff'}},'❌ CANCELLED — '+fds(c.cancelledDate)):null
             ),
             c.deliveryNote?h('div',{style:{fontSize:'12px',color:'#b94040',marginTop:'4px'}},'📌 '+c.deliveryNote):null,
             (c.holidays||[]).length?h('div',{style:{fontSize:'12px',color:'#5a7ec8',marginTop:'3px'}},'🏖 '+c.holidays.length+' holiday'+(c.holidays.length!==1?'s':'')+' on record'):null
@@ -1573,6 +1611,7 @@ function rCustomers(){
               btn('b3','✏ Edit',()=>{st.showEditCustomer={...c};render();}),
               btn('b4','🏖 Holiday',()=>{st.showHoliday=c.id;render();}),
               btn('b3','📋 Papers',()=>{st.showPaperLog=c.id;st.paperChangeDate=tod();st.paperChangeTitle=(st.stock[0]&&st.stock[0].title)||'';st.paperChangeAction='add';render();}),
+              !c.cancelled?btn('b6',{style:{background:'#7a3030',color:'#fff'}},'🚪 Final Bill',()=>{st.showFinalBill=c.id;st.finalBillDate=tod();render();}):null,
               btn('b6','🗑',()=>{if(confirm('Delete '+c.name+'?\n\nThis cannot be undone.')){const delId=c.id;st.customers=st.customers.filter(x=>x.id!==c.id);S.set('customers',st.customers);DB.deleteCustomer(delId);render();toast('✓ '+c.name+' deleted');}})
             )
           )
@@ -2563,6 +2602,67 @@ function rModals(){
             :h('div',{style:{background:'#f5f5f5',border:'1px solid #ddd',borderRadius:'3px',padding:'10px 6px',fontSize:'11px',color:'#aaa',textAlign:'center'}},'📧 No email on file')
         )
       ),()=>{st.showBillModal=null;st.reprintStart=null;st.reprintDays=28;render();}));
+    }
+  }
+
+  if(st.showFinalBill){
+    const c=st.customers.find(cu=>cu.id===st.showFinalBill);
+    if(c){
+      const start=getBillingStart(c);
+      const cancelDate=st.finalBillDate||tod();
+      const daysElapsed=Math.max(1,Math.min(28,Math.floor((new Date(cancelDate)-new Date(start))/86400000)+1));
+      const bill=calcBill(c,start,daysElapsed);
+      const outstanding=(c.balance<0)?Math.abs(c.balance):0;
+      const creditOnAccount=(c.balance>0)?c.balance:0;
+      const totalPayable=Math.max(0,bill.grandTotal+outstanding-creditOnAccount);
+
+      function doPrintFinal(){
+        const css=getInvoiceCSS();
+        const html='<!DOCTYPE html><html><head><meta charset="utf-8"><style>'+css+'</style></head><body>'+finalBillHTML(c,start,daysElapsed,cancelDate,bill)+'</body></html>';
+        doPrint(html);
+      }
+      function doEmailFinal(){
+        if(!c.email){alert('No email address on file for '+c.name+'.');return;}
+        sendBillViaSendGrid(c,start,daysElapsed,false)
+          .then(()=>toast('✓ Final bill emailed to '+c.email))
+          .catch(err=>alert('⚠ Failed to send: '+err.message));
+      }
+      function finalizeCancel(){
+        st.customers=st.customers.map(cu=>cu.id===c.id?{...cu,balance:parseFloat((cu.balance-bill.grandTotal).toFixed(2)),cancelled:true,cancelledDate:cancelDate,roundId:null}:cu);
+        ps('customers');
+        st.showFinalBill=null;
+        render();
+        toast('✓ '+c.name+'\'s account closed');
+      }
+
+      ms.push(mod('🚪 Final Bill — '+c.name,h('div',{},
+        h('div',{style:{fontSize:'13px',color:'#555',marginBottom:'12px'}},'Use this when a customer is cancelling mid-cycle. It bills them only for the days delivered this period — not the full cycle — then closes their account so they won\'t be charged again when the round\'s cycle next closes.'),
+        lbl('Cancellation / Last Delivery Date'),
+        h('input',{type:'date',className:'fi',value:cancelDate,onchange:e=>{st.finalBillDate=e.target.value;render();}}),
+        h('div',{style:{fontSize:'12px',color:'#888',marginBottom:'12px'}},'Billing '+daysElapsed+' day'+(daysElapsed!==1?'s':'')+' of this cycle ('+fds(start)+' → '+fds(cancelDate)+').'),
+        h('div',{className:'a3',style:{marginBottom:'14px'}},
+          h('div',{style:{fontWeight:'bold',fontSize:'12px',marginBottom:'8px',textTransform:'uppercase',letterSpacing:'.5px'}},'📋 Final Bill Breakdown'),
+          ...bill.lines.map(l=>h('div',{style:{display:'flex',justifyContent:'space-between',padding:'4px 0',borderBottom:'1px solid #e8e0d0',fontSize:'13px'}},
+            h('span',{},l.title+' ('+l.label+')'),h('span',{},fmt(l.lineTotal))
+          )),
+          h('div',{style:{display:'flex',justifyContent:'space-between',padding:'4px 0',borderBottom:'1px solid #e8e0d0',fontSize:'13px'}},h('span',{},'Delivery'),h('span',{},fmt(bill.deliveryTotal))),
+          h('div',{style:{display:'flex',justifyContent:'space-between',padding:'6px 0',fontWeight:'bold',fontSize:'14px'}},h('span',{},'Final period'),h('span',{},fmt(bill.grandTotal))),
+          outstanding>0?h('div',{style:{display:'flex',justifyContent:'space-between',padding:'4px 0',fontSize:'13px',color:'#b94040'}},h('span',{},'Previous outstanding'),h('span',{},fmt(outstanding))):null,
+          creditOnAccount>0?h('div',{style:{display:'flex',justifyContent:'space-between',padding:'4px 0',fontSize:'13px',color:'#2a5e2a'}},h('span',{},'Credit on account'),h('span',{},'−'+fmt(creditOnAccount))):null,
+          h('div',{style:{display:'flex',justifyContent:'space-between',padding:'8px 0',fontWeight:'bold',fontSize:'16px',borderTop:'2px solid #c8a84b',marginTop:'6px'}},h('span',{},'TOTAL TO COLLECT'),h('span',{},fmt(totalPayable)))
+        ),
+        h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px',marginBottom:'10px'}},
+          btn('b1','🖨 Print Final Bill',doPrintFinal),
+          c.email
+            ?btn('b4','📧 Email Final Bill',doEmailFinal)
+            :h('div',{style:{background:'#f5f5f5',border:'1px solid #ddd',borderRadius:'3px',padding:'10px 6px',fontSize:'11px',color:'#aaa',textAlign:'center'}},'📧 No email on file')
+        ),
+        btn('b6 bf',{style:{width:'100%',background:'#7a3030',color:'#fff'}},'✓ Confirm Cancellation & Close Account',()=>{
+          if(confirm('Close '+c.name+'\'s account?\n\nThis charges £'+bill.grandTotal.toFixed(2)+' for this final period, removes them from their round, and they will not be billed again. This cannot be easily undone.')){
+            finalizeCancel();
+          }
+        })
+      ),()=>{st.showFinalBill=null;render();}));
     }
   }
 

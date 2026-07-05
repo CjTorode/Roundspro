@@ -239,7 +239,7 @@ const DB = {
         papers: c.papers||[],
         holidays: c.holidays||[],
         paper_pauses: c.paperPauses||[],
-        // paper_log omitted — add column to Supabase if needed
+        paper_log: c.paperLog||[],
         delivery_charge: c.deliveryCharge||0,
         delivery_note: c.deliveryNote||'',
         gst_exempt: c.gstExempt||false,
@@ -455,6 +455,10 @@ const DB = {
 
         const merged = incoming.map(remote => {
           const local = st.shopWeeks.find(w => String(w.id) === String(remote.id));
+          // If local was edited in the last few seconds, trust it over whatever just came back —
+          // the save that would supersede it may still be in flight.
+          const editedVeryRecently = (Date.now() - (DB._lastLocalEditAt||0)) < 5000;
+          if(local && editedVeryRecently) return local;
           // If local has data but remote doesn't, keep local
           if(local && weekHasData(local) && !weekHasData(remote)){
             console.log('shopWeeks: keeping local data for week', remote.id, '— remote was blank');
@@ -554,7 +558,7 @@ async function startApp(){
   await DB.load(); // Fetch fresh from Supabase
   // Auto-sync every 30 seconds (silent)
   setInterval(async () => {
-    if(getSB() && !DB._scanInProgress){
+    if(getSB() && !DB._scanInProgress && (Date.now() - (DB._lastLocalEditAt||0)) > 5000){
       DB._silent = true;
       await DB.load();
     }
@@ -755,6 +759,11 @@ function holDays(c,start,days){
   }
   return n;
 }
+// Returns titles of one-off "extra" papers logged for a customer on a given date
+function extrasOnDate(c,dateStr){
+  return (c.extraDeliveries||[]).filter(function(ex){return ex.date===dateStr;}).map(function(ex){return ex.title;});
+}
+
 function papersOnDate(c,dateStr){
   const log=c.paperLog||[];
   const titles=new Set([...(c.papers||[]), ...log.map(function(e){return e.title;})]);
@@ -1299,7 +1308,7 @@ function printSheet(rid){
   const custs=st.customers.filter(c=>c.roundId===rid).sort((a,b)=>a.roundOrder-b.roundOrder);
   const biz=st.bizDetails;
   const td=new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
-  const rows=custs.map((c,i)=>`<tr><td class="num">${i+1}</td><td><strong>${c.name}</strong><br/><span class="addr">${c.address}</span>${c.deliveryNote?`<br/><span class="note">📌 ${c.deliveryNote}</span>`:''}</td><td>${c.papers.map(p=>`<span class="tag">${p}</span>`).join(' ')}</td><td class="tick">☐</td></tr>`).join('');
+  const rows=custs.map((c,i)=>`<tr><td class="num">${i+1}</td><td><strong>${c.name}</strong><br/><span class="addr">${c.address}</span>${c.deliveryNote?`<br/><span class="note">📌 ${c.deliveryNote}</span>`:''}</td><td>${c.papers.map(p=>`<span class="tag">${p}</span>`).join(' ')}${extrasOnDate(c,tod()).map(t=>`<span class="tag" style="background:#2a5e2a;color:#fff">➕ ${t}</span>`).join(' ')}</td><td class="tick">☐</td></tr>`).join('');
   const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Delivery Sheet</title>
 <style>@page{size:A5 portrait;margin:10mm}*{box-sizing:border-box}body{font-family:Georgia,serif;font-size:11px;color:#1a1a1a;margin:0}
 h1{font-size:15px;margin:0}h2{font-size:11px;margin:3px 0 0;color:#888;font-weight:normal;letter-spacing:1px}
@@ -1546,6 +1555,7 @@ function rCustomers(){
             h('div',{style:{fontSize:'13px',color:'#666',marginTop:'2px'}},'📍 '+c.address+' · 📞 '+c.phone),
             h('div',{style:{marginTop:'5px',display:'flex',flexWrap:'wrap',gap:'4px'}},
               ...c.papers.map(p=>h('span',{className:'tag'},p)),
+              ...extrasOnDate(c,tod()).map(t=>h('span',{className:'tag',style:{background:'#2a5e2a',color:'#fff'}},'➕ '+t)),
               h('span',{className:'tag tag-g'},'🚚 '+fmt(c.deliveryCharge)+'/week'),
               r?h('span',{className:'tag tag-b'},'🚲 '+r.name):null,
               c.gstExempt?h('span',{className:'tag tag-r'},'GST Exempt'):null,
@@ -1635,7 +1645,10 @@ function rRounds(){
               h('div',{style:{flex:1}},
                 h('div',{style:{fontWeight:'bold'}},c.name),
                 h('div',{style:{fontSize:'12px',color:'#666'}},c.address),
-                h('div',{style:{marginTop:'3px',display:'flex',flexWrap:'wrap',gap:'3px'}},...c.papers.map(p=>h('span',{className:'tag',style:{fontSize:'11px',padding:'1px 6px'}},p))),
+                h('div',{style:{marginTop:'3px',display:'flex',flexWrap:'wrap',gap:'3px'}},
+                  ...c.papers.map(p=>h('span',{className:'tag',style:{fontSize:'11px',padding:'1px 6px'}},p)),
+                  ...extrasOnDate(c,tod()).map(t=>h('span',{className:'tag',style:{fontSize:'11px',padding:'1px 6px',background:'#2a5e2a',color:'#fff'}},'➕ '+t))
+                ),
                 c.deliveryNote?h('div',{style:{fontSize:'11px',color:'#b94040',marginTop:'2px'}},'📌 '+c.deliveryNote):null
               ),
               h('div',{style:{display:'flex',flexDirection:'column',gap:'3px'}},
@@ -3212,9 +3225,16 @@ function rShop(){
   if(st.shopEditWeek !== null){
     const wk = st.shopWeeks.find(w => w.id === st.shopEditWeek);
     if(!wk){ st.shopEditWeek = null; render(); return h('div',{}); }
-    const save = () => { 
+    const save = () => {
       S.set('shopWeeks', st.shopWeeks); // immediate local save
-      DB.saveShopWeeks().catch(e => toast('⚠ Sync error: ' + e.message));
+      // Flag that an edit just happened so auto-sync backs off and doesn't clobber it
+      DB._lastLocalEditAt = Date.now();
+      // Debounce the actual network push — firing one upsert per keystroke caused
+      // overlapping requests to race and let a slower/older one land last.
+      clearTimeout(save._t);
+      save._t = setTimeout(() => {
+        DB.saveShopWeeks().catch(e => toast('⚠ Sync error: ' + e.message));
+      }, 800);
     };
     // Debounced render — waits 600ms after last keystroke so inputs don't lose focus mid-typing
     let _shopRenderTimer = null;
@@ -4020,6 +4040,12 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
           h('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:'10px',fontSize:'13px',color:'#aaa'}},
             h('span',{},'Less Discount Magazines ('+st.shopDiscountMag+'%)'),h('span',{},'−£'+c.discMag.toFixed(2))
           ),
+          (parseFloat(wk.vouchers)||0) > 0 ? h('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:'6px',fontSize:'13px',color:'#e0a840'}},
+            h('span',{},'Vouchers'),h('span',{},'−£'+(parseFloat(wk.vouchers)||0).toFixed(2))
+          ) : null,
+          (parseFloat(wk.overdue)||0) !== 0 ? h('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:'10px',fontSize:'13px',color:'#e0a840'}},
+            h('span',{},'Overdue'),h('span',{},'£'+(parseFloat(wk.overdue)||0).toFixed(2))
+          ) : null,
           h('div',{style:{display:'flex',justifyContent:'space-between',fontSize:'20px',fontWeight:'bold',borderTop:'1px solid #c8a84b',paddingTop:'10px'}},
             h('span',{},'TOTAL DUE'),h('span',{},'£'+c.totalDue.toFixed(2))
           )

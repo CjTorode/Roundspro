@@ -257,9 +257,12 @@ const DB = {
   },
 
   async deleteCustomer(id){
+    // Note: does NOT swallow errors — caller needs to know if the cloud
+    // delete actually failed, so it can roll back the local removal
+    // instead of showing a false "deleted" confirmation.
+    if(!getSB()){ S.set('customers', st.customers); return; }
+    await sbDelete('customers', id);
     S.set('customers', st.customers);
-    if(!getSB()) return;
-    try { await sbDelete('customers', id); } catch(e){ console.warn('deleteCustomer:', e.message); }
   },
 
   async saveStock(){
@@ -626,7 +629,7 @@ const st={
   bizDetails:S.get('bizDetails',{name:'C J Torode Newsagent',address:'',phone:'',email:'',paymentInfo:''}),
   lastWedCharge:S.get('lastWedCharge',''),
   billStyle:S.get('billStyle','detailed'),
-  showSettings:false,showAddCustomer:false,showAddStock:false,editStock:null,
+  showSettings:false,showAddCustomer:false,showAddStock:false,editStock:null,showDuplicates:false,
   showPayment:null,showBill:null,showHoliday:null,showCloseCycle:false,showChargeMonthly:null,showBillModal:null,showEditCustomer:null,showPaperLog:null,showFinalBill:null,finalBillDate:'',
   showAddRound:false,selectedRound:null,selectedDay:null,
   calYear:new Date().getFullYear(),calMonth:new Date().getMonth(),
@@ -1562,10 +1565,22 @@ function rCustomers(){
   });
   const ts=tod();
   const roundFilters=[{id:'all',name:'All Rounds'},...st.rounds.map(r=>({id:r.id,name:r.name}))];
+  const dupGroupCount=(function(){
+    const groups={};
+    st.customers.forEach(c=>{
+      const key=(c.name||'').trim().toUpperCase();
+      if(!key)return;
+      (groups[key]=groups[key]||[]).push(c);
+    });
+    return Object.values(groups).filter(g=>g.length>1).length;
+  })();
   return h('div',{},
     h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'16px'}},
       h('h2',{className:'st',style:{marginBottom:'0',flex:'1'}},'Customer Records'),
-      btn('b1','+ Add Customer',()=>{st.showAddCustomer=true;render();})
+      h('div',{style:{display:'flex',gap:'8px'}},
+        dupGroupCount>0?btn('b6',{style:{background:'#7a3030',color:'#fff'}},'⚠ '+dupGroupCount+' possible duplicate'+(dupGroupCount!==1?'s':''),()=>{st.showDuplicates=true;render();}):null,
+        btn('b1','+ Add Customer',()=>{st.showAddCustomer=true;render();})
+      )
     ),
     h('div',{style:{display:'flex',gap:'8px',marginBottom:'12px',flexWrap:'wrap'}},
       ...roundFilters.map(r=>h('button',{
@@ -1612,7 +1627,7 @@ function rCustomers(){
               btn('b4','🏖 Holiday',()=>{st.showHoliday=c.id;render();}),
               btn('b3','📋 Papers',()=>{st.showPaperLog=c.id;st.paperChangeDate=tod();st.paperChangeTitle=(st.stock[0]&&st.stock[0].title)||'';st.paperChangeAction='add';render();}),
               !c.cancelled?btn('b6',{style:{background:'#7a3030',color:'#fff'}},'🚪 Final Bill',()=>{st.showFinalBill=c.id;st.finalBillDate=tod();render();}):null,
-              btn('b6','🗑',()=>{if(confirm('Delete '+c.name+'?\n\nThis cannot be undone.')){const delId=c.id;st.customers=st.customers.filter(x=>x.id!==c.id);S.set('customers',st.customers);DB.deleteCustomer(delId);render();toast('✓ '+c.name+' deleted');}})
+              btn('b6','🗑',async()=>{if(confirm('Delete '+c.name+'?\n\nThis cannot be undone.')){const delId=c.id;const delName=c.name;const backup=st.customers;st.customers=st.customers.filter(x=>x.id!==c.id);S.set('customers',st.customers);render();toast('Deleting '+delName+'…');try{await DB.deleteCustomer(delId);toast('✓ '+delName+' deleted');}catch(e){st.customers=backup;S.set('customers',st.customers);render();toast('⚠ Delete failed — check your connection and try again');}}})
             )
           )
         );
@@ -2227,6 +2242,47 @@ function rModals(){
       )
     ));
   }
+
+  if(st.showDuplicates){
+    const groups={};
+    st.customers.forEach(c=>{
+      const key=(c.name||'').trim().toUpperCase();
+      if(!key)return;
+      (groups[key]=groups[key]||[]).push(c);
+    });
+    const dupGroups=Object.values(groups).filter(g=>g.length>1);
+    const delOne=async(delId,delName)=>{
+      if(!confirm('Delete this '+delName+' record?\n\nThis cannot be undone.'))return;
+      const backup=st.customers;
+      st.customers=st.customers.filter(x=>x.id!==delId);
+      S.set('customers',st.customers);render();
+      toast('Deleting…');
+      try{ await DB.deleteCustomer(delId); toast('✓ Deleted'); render(); }
+      catch(e){ st.customers=backup; S.set('customers',st.customers); render(); toast('⚠ Delete failed — check your connection and try again'); }
+    };
+    ms.push(mod('⚠ Possible Duplicate Customers',h('div',{},
+      dupGroups.length===0
+        ? h('div',{style:{padding:'20px 0',textAlign:'center',color:'#2a5e2a',fontSize:'14px'}},'✓ No duplicate names found.')
+        : h('div',{},
+            h('div',{style:{fontSize:'13px',color:'#666',marginBottom:'14px'}},dupGroups.length+' name'+(dupGroups.length!==1?'s':'')+' appear more than once. Check each pair below — if one is a stale leftover (wrong price, no round assigned, old balance), delete it here.'),
+            ...dupGroups.map(g=>h('div',{style:{border:'1px solid #e0d8c8',borderRadius:'4px',marginBottom:'12px',overflow:'hidden'}},
+              h('div',{style:{background:'#f5f0e8',padding:'8px 12px',fontWeight:'bold',fontSize:'14px'}},g[0].name),
+              ...g.map(c=>{
+                const r=st.rounds.find(x=>x.id===c.roundId);
+                return h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 12px',borderTop:'1px solid #e8e0d0',fontSize:'12px',gap:'8px'}},
+                  h('div',{style:{flex:1}},
+                    h('div',{style:{color:'#666'}},'📍 '+(c.address||'(no address)')),
+                    h('div',{style:{color:'#666',marginTop:'2px'}},(c.papers||[]).join(', ')+' · 🚚 '+fmt(c.deliveryCharge)+'/week'+(r?' · 🚲 '+r.name:' · no round')),
+                    h('div',{style:{marginTop:'2px',fontWeight:'bold',color:c.balance<0?'#b94040':'#2a5e2a'}},c.balance<0?'-'+fmt(c.balance):'Clear')
+                  ),
+                  h('button',{className:'btn b6',style:{fontSize:'11px',padding:'6px 10px',flexShrink:0},onclick:()=>delOne(c.id,c.name)},'🗑 Delete this one')
+                );
+              })
+            ))
+          )
+    ),()=>{st.showDuplicates=false;render();}));
+  }
+
 
   if(st.showAddCustomer){
     const nc=st.newCustomer;

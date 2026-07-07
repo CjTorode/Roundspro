@@ -1568,8 +1568,10 @@ function rCustomers(){
   const dupGroupCount=(function(){
     const groups={};
     st.customers.forEach(c=>{
-      const key=(c.name||'').trim().toUpperCase();
-      if(!key)return;
+      const nameKey=(c.name||'').trim().toUpperCase();
+      const addrKey=(c.address||'').trim().toUpperCase();
+      if(!nameKey)return;
+      const key=nameKey+'|'+addrKey;
       (groups[key]=groups[key]||[]).push(c);
     });
     return Object.values(groups).filter(g=>g.length>1).length;
@@ -2246,8 +2248,10 @@ function rModals(){
   if(st.showDuplicates){
     const groups={};
     st.customers.forEach(c=>{
-      const key=(c.name||'').trim().toUpperCase();
-      if(!key)return;
+      const nameKey=(c.name||'').trim().toUpperCase();
+      const addrKey=(c.address||'').trim().toUpperCase();
+      if(!nameKey)return;
+      const key=nameKey+'|'+addrKey;
       (groups[key]=groups[key]||[]).push(c);
     });
     const dupGroups=Object.values(groups).filter(g=>g.length>1);

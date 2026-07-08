@@ -1057,18 +1057,21 @@ function finalBillHTML(c, start, days, cancelDate, bill){
   return hdr+table+pb+closeNote+'<div class="ft">Thank you for your custom — '+(biz.name||'C J Torode Newsagent')+'</div>';
 }
 
-function buildInvoiceHTML(c, suppressBalance){
+function buildInvoiceHTML(c, suppressBalance, isReprint){
   var bill=calcBill(c,getBillingStart(c),28);
   var biz=st.bizDetails;var gst=st.gstEnabled?st.gstRate:0;
   var td=new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});
   var bi=[biz.address,biz.phone?'Tel: '+biz.phone:'',biz.email?'Email: '+biz.email:''].filter(Boolean).join('<br/>');
   var pb=biz.paymentInfo?'<div class="pay"><strong>Payment Details:</strong><br/>'+biz.paymentInfo.split('\n').join('<br/>')+'</div>':'';
-  var hdr='<div class="hdr"><div><h1>&#128240; '+(biz.name||'C J TORODE')+'</h1><div class="sub">Customer Invoice</div><div class="biz">'+bi+'</div></div>'
+  var hdr='<div class="hdr"><div><h1>&#128240; '+(biz.name||'C J TORODE')+'</h1><div class="sub">Customer Invoice'+(isReprint?' (Reprint)':'')+'</div><div class="biz">'+bi+'</div></div>'
     +'<div class="hr"><strong>Date:</strong> '+td+'<br/><strong>Period:</strong> '+(getBillingPeriod(c)||'4-week cycle')+(c.gstExempt?'<br/><em>GST Exempt</em>':'')+'</div></div>'
     +'<div class="bt"><strong>Bill To:</strong><br/>'+c.name+'<br/>'+c.address+(c.phone?'<br/>'+c.phone:'')+'</div>';
   var table='';
-  var outstanding=(c.balance<0)?Math.abs(c.balance):0;
-  var creditOnAccount=(!suppressBalance&&c.balance>0)?c.balance:0;
+  // Reprinting a past, already-closed cycle: its charge is already sitting in the
+  // live account balance, so don't add outstanding/credit on top — that would
+  // double-count the same money. Just show what that period alone cost.
+  var outstanding=(!isReprint&&c.balance<0)?Math.abs(c.balance):0;
+  var creditOnAccount=(!isReprint&&!suppressBalance&&c.balance>0)?c.balance:0;
   var totalPayable=bill.grandTotal+outstanding-creditOnAccount;
   if(totalPayable<0)totalPayable=0;
   if(st.billStyle==='weekly'){
@@ -1099,7 +1102,8 @@ function buildInvoiceHTML(c, suppressBalance){
     if(bill.holidayDays>0)table+='<div class="hol">&#127958; '+bill.holidayDays+' holiday day'+(bill.holidayDays!==1?'s':'')+' deducted &mdash; '+bill.chargeDays+' days charged</div>';
   }
   var emailNudge=!(c.email||'').trim()?'<div style="margin-top:10px;padding:12px 14px;border:1px dashed #999;border-radius:3px;font-size:12px;color:#555;"><strong>&#128240; Prefer to receive your invoice by email?</strong><br/>Simply email us at <strong>craigpapers@icloud.com</strong> with your house name and we will switch you to email billing — saving paper and making it easier to keep track.</div>':'';
-  return hdr+table+pb+emailNudge+'<div class="ft">Thank you — '+(biz.name||'C J Torode Newsagent')+'</div>';
+  var reprintNote=isReprint?'<div style="margin-top:10px;padding:10px 14px;border:1px dashed #999;border-radius:3px;font-size:11px;color:#777;">This is a reprint of a past cycle — the figure above is for this period only and does not include the account\'s current balance.</div>':'';
+  return hdr+table+pb+reprintNote+emailNudge+'<div class="ft">Thank you — '+(biz.name||'C J Torode Newsagent')+'</div>';
 }
 
 
@@ -1124,7 +1128,7 @@ function printBill(cid){
 // ── EMAIL INVOICE HELPERS ────────────────────────────────────────────
 
 // Build plain-text version of a bill
-function buildPlainTextBill(c, startOverride, daysOverride, suppressBalance){
+function buildPlainTextBill(c, startOverride, daysOverride, suppressBalance, isReprint){
   const start = startOverride || getBillingStart(c);
   const days  = daysOverride  || 28;
   const bill=calcBill(c,start,days);
@@ -1136,11 +1140,13 @@ function buildPlainTextBill(c, startOverride, daysOverride, suppressBalance){
   body+=line(biz.name||'C J Torode Newsagent');
   if(biz.address)body+=line(biz.address);
   if(biz.phone)body+=line('Tel: '+biz.phone);
-  body+=line('');body+=line('INVOICE');body+=line(sep);
+  body+=line('');body+=line(isReprint?'INVOICE (REPRINT)':'INVOICE');body+=line(sep);
   body+=line('To: '+c.name);body+=line('    '+c.address);
   body+=line('Billing Period: '+period);body+=line('');
-  const outstanding=(c.balance<0)?Math.abs(c.balance):0;
-  const creditOnAccount=(!suppressBalance&&c.balance>0)?c.balance:0;
+  // Reprinting a past, already-closed cycle: that charge is already in the live
+  // balance, so don't add outstanding/credit on top of it again.
+  const outstanding=(!isReprint&&c.balance<0)?Math.abs(c.balance):0;
+  const creditOnAccount=(!isReprint&&!suppressBalance&&c.balance>0)?c.balance:0;
   const totalPayable=Math.max(0,bill.grandTotal+outstanding-creditOnAccount);
   if(st.billStyle==='weekly'){
     const wr=buildWeeklyRows(c,start);
@@ -1174,12 +1180,13 @@ function buildPlainTextBill(c, startOverride, daysOverride, suppressBalance){
     if(bill.holidayDays>0){body+=line('');body+=line('* '+bill.holidayDays+' holiday day'+(bill.holidayDays!==1?'s':'')+' deducted');}
   }
   if(biz.paymentInfo){body+=line('');body+=line('Payment Details:');body+=line(biz.paymentInfo);}
+  if(isReprint){body+=line('');body+=line('(This is a reprint of a past cycle — figures above are for this period only and do not include the account\'s current balance.)');}
   body+=line('');body+=line('Thank you for your custom.');body+=line(biz.name||'C J Torode Newsagent');
   return body;
 }
 
 // Build HTML email version of a bill (inline styles for email client compatibility)
-function buildHTMLEmail(c, startOverride, daysOverride, suppressBalance){
+function buildHTMLEmail(c, startOverride, daysOverride, suppressBalance, isReprint){
   const start = startOverride || getBillingStart(c);
   const days  = daysOverride  || 28;
   const bill=calcBill(c,start,days);
@@ -1187,8 +1194,10 @@ function buildHTMLEmail(c, startOverride, daysOverride, suppressBalance){
   const rpEnd=new Date(start); rpEnd.setDate(rpEnd.getDate()+days-1);
   const period=fds(start)+' – '+fds(rpEnd.toISOString().split('T')[0]);
   const td2=new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});
-  const outstanding=(c.balance<0)?Math.abs(c.balance):0;
-  const creditOnAccount=(!suppressBalance&&c.balance>0)?c.balance:0;
+  // Reprinting a past, already-closed cycle: that charge is already in the live
+  // balance, so don't add outstanding/credit on top of it again.
+  const outstanding=(!isReprint&&c.balance<0)?Math.abs(c.balance):0;
+  const creditOnAccount=(!isReprint&&!suppressBalance&&c.balance>0)?c.balance:0;
   const totalPayable=Math.max(0,bill.grandTotal+outstanding-creditOnAccount);
 
   const rowStyle='padding:8px 10px;border-bottom:1px solid #e8e0d0;font-size:13px;font-family:Georgia,serif';
@@ -1239,6 +1248,11 @@ function buildHTMLEmail(c, startOverride, daysOverride, suppressBalance){
         Email us at <strong>craigpapers@icloud.com</strong> with your house name and we'll switch you to email billing.
        </div>` : '';
 
+  const reprintNote = isReprint
+    ? `<div style="margin-top:12px;padding:10px 14px;border:1px dashed #999;border-radius:3px;font-size:11px;color:#777;font-family:Georgia,serif">
+        This is a reprint of a past cycle — the figure above is for this period only and does not include the account's current balance.
+       </div>` : '';
+
   return `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#f5f0e8;font-family:Georgia,serif">
@@ -1248,7 +1262,7 @@ function buildHTMLEmail(c, startOverride, daysOverride, suppressBalance){
   <!-- Header -->
   <tr><td style="background:#1a1a1a;padding:20px 28px;border-bottom:4px solid #c8a84b">
     <div style="font-size:22px;font-weight:bold;letter-spacing:1px;color:#c8a84b">🗞 ${biz.name||'C J TORODE'}</div>
-    <div style="font-size:11px;letter-spacing:3px;color:#888;text-transform:uppercase;margin-top:2px">Newsagent · Customer Invoice</div>
+    <div style="font-size:11px;letter-spacing:3px;color:#888;text-transform:uppercase;margin-top:2px">Newsagent · Customer Invoice${isReprint?' (Reprint)':''}</div>
     ${biz.address?`<div style="font-size:12px;color:#777;margin-top:4px">${biz.address}</div>`:''}
     ${biz.phone?`<div style="font-size:12px;color:#777">Tel: ${biz.phone}</div>`:''}
   </td></tr>
@@ -1277,6 +1291,7 @@ function buildHTMLEmail(c, startOverride, daysOverride, suppressBalance){
     </table>
     ${payBlock}
     ${emailNudge}
+    ${reprintNote}
     <div style="margin-top:16px;font-size:12px;color:#888;font-family:Georgia,serif;border-top:1px solid #e8e0d0;padding-top:10px;text-align:center">
       Thank you for your custom — ${biz.name||'C J Torode Newsagent'}
     </div>
@@ -1291,16 +1306,16 @@ function buildHTMLEmail(c, startOverride, daysOverride, suppressBalance){
 }
 
 // Send a single bill via SendGrid (async, returns promise)
-async function sendBillViaSendGrid(c, startOverride, daysOverride, suppressBalance){
+async function sendBillViaSendGrid(c, startOverride, daysOverride, suppressBalance, isReprint){
   if(!c.email) throw new Error('No email address for '+c.name);
   const start  = startOverride || getBillingStart(c);
   const days   = daysOverride  || 28;
   const rpEnd  = new Date(start); rpEnd.setDate(rpEnd.getDate()+days-1);
   const period = fds(start)+' – '+fds(rpEnd.toISOString().split('T')[0]);
   const biz    = st.bizDetails;
-  const subject= (biz.name||'C J Torode')+' — Invoice '+period;
-  const html   = buildHTMLEmail(c, start, days, suppressBalance);
-  const text   = buildPlainTextBill(c, start, days, suppressBalance);
+  const subject= (biz.name||'C J Torode')+' — Invoice '+period+(isReprint?' (Reprint)':'');
+  const html   = buildHTMLEmail(c, start, days, suppressBalance, isReprint);
+  const text   = buildPlainTextBill(c, start, days, suppressBalance, isReprint);
 
   const resp = await fetch('/.netlify/functions/send-email', {
     method: 'POST',
@@ -2653,13 +2668,13 @@ function rModals(){
           const rpEnd=new Date(rpStart);rpEnd.setDate(rpEnd.getDate()+rpDays-1);
           st[periodKey]=fds(rpStart)+' – '+fds(rpEnd.toISOString().split('T')[0]);
         }
-        const html='<!DOCTYPE html><html><head><meta charset="utf-8"><style>'+css+'</style></head><body>'+buildInvoiceHTML(c, true)+'</body></html>';
+        const html='<!DOCTYPE html><html><head><meta charset="utf-8"><style>'+css+'</style></head><body>'+buildInvoiceHTML(c, true, isReprint)+'</body></html>';
         if(isReprint){st[startKey]=origStart;st[periodKey]=origPeriod;}
         doPrint(html);
       }
       function doEmailBill(){
         if(!c.email){alert('No email address on file for '+c.name+'.');return;}
-        sendBillViaSendGrid(c, isReprint?rpStart:undefined, isReprint?rpDays:undefined, true)
+        sendBillViaSendGrid(c, isReprint?rpStart:undefined, isReprint?rpDays:undefined, true, isReprint)
           .then(()=>{toast('✓ Invoice sent to '+c.email);st.showBillModal=null;st.reprintStart=null;st.reprintDays=28;render();})
           .catch(err=>{alert('⚠ Failed to send: '+err.message);});
       }
@@ -2711,7 +2726,12 @@ function rModals(){
             h('div',{style:{display:'flex',justifyContent:'space-between',padding:'6px 0',fontWeight:'bold',fontSize:'14px'}},h('span',{},'This cycle'),h('span',{},fmt(bill.grandTotal)))
           )
         ),
-        (function(){
+        isReprint
+          ? h('div',{className:'a3',style:{marginBottom:'14px',background:'#f0f0f0',border:'1px solid #999'}},
+              h('div',{style:{fontWeight:'bold',fontSize:'12px',marginBottom:'6px',textTransform:'uppercase',letterSpacing:'.5px',color:'#555'}},'📌 Reprinting a Past Cycle'),
+              h('div',{style:{fontSize:'12px',color:'#555',lineHeight:'1.5'}},'This cycle already closed, so its charge is already sitting in the account\'s current balance. Print and Email below will correctly show just "'+fmt(bill.grandTotal)+'" for this period alone — not added to the live balance. To compare against what\'s actually on the account and correct it if needed, use the button below.')
+            )
+          : (function(){
           const outstanding=(c.balance<0)?Math.abs(c.balance):0;
           const creditOnAccount=(c.balance>0)?c.balance:0;
           let totalPayable=bill.grandTotal+outstanding-creditOnAccount;

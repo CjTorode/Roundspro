@@ -2639,15 +2639,28 @@ function rModals(){
             ...wr.map(r=>h('div',{style:{display:'flex',justifyContent:'space-between',padding:'4px 0',borderBottom:'1px solid #e8e0d0',fontSize:'13px'}},
               h('span',{},r.label+(r.hdays>0?' 🏖':'')),h('span',{},fmt(r.total))
             )),
-            h('div',{style:{display:'flex',justifyContent:'space-between',padding:'6px 0',fontWeight:'bold',fontSize:'14px'}},h('span',{},'Total Due'),h('span',{},fmt(bill.grandTotal)))
+            h('div',{style:{display:'flex',justifyContent:'space-between',padding:'6px 0',fontWeight:'bold',fontSize:'14px'}},h('span',{},'This cycle'),h('span',{},fmt(bill.grandTotal)))
           ):h('div',{},
             ...bill.lines.map(l=>h('div',{style:{display:'flex',justifyContent:'space-between',padding:'4px 0',borderBottom:'1px solid #e8e0d0',fontSize:'13px'}},
               h('span',{},l.title+' ('+l.label+')'),h('span',{},fmt(l.lineTotal))
             )),
             h('div',{style:{display:'flex',justifyContent:'space-between',padding:'4px 0',borderBottom:'1px solid #e8e0d0',fontSize:'13px'}},h('span',{},'Delivery'),h('span',{},fmt(bill.deliveryTotal))),
-            h('div',{style:{display:'flex',justifyContent:'space-between',padding:'6px 0',fontWeight:'bold',fontSize:'14px'}},h('span',{},'Total Due'),h('span',{},fmt(bill.grandTotal)))
+            h('div',{style:{display:'flex',justifyContent:'space-between',padding:'6px 0',fontWeight:'bold',fontSize:'14px'}},h('span',{},'This cycle'),h('span',{},fmt(bill.grandTotal)))
           )
         ),
+        (function(){
+          const outstanding=(c.balance<0)?Math.abs(c.balance):0;
+          const creditOnAccount=(c.balance>0)?c.balance:0;
+          let totalPayable=bill.grandTotal+outstanding-creditOnAccount;
+          if(totalPayable<0)totalPayable=0;
+          return h('div',{className:'a3',style:{marginBottom:'14px',background:'#fff8e8',border:'1px solid #c8a84b'}},
+            h('div',{style:{fontWeight:'bold',fontSize:'12px',marginBottom:'8px',textTransform:'uppercase',letterSpacing:'.5px',color:'#8a6a00'}},'💰 What Will Actually Print'),
+            outstanding>0?h('div',{style:{display:'flex',justifyContent:'space-between',padding:'4px 0',fontSize:'13px'}},h('span',{},'Previous outstanding'),h('span',{},fmt(outstanding))):null,
+            creditOnAccount>0?h('div',{style:{display:'flex',justifyContent:'space-between',padding:'4px 0',fontSize:'13px',color:'#2a5e2a'}},h('span',{},'Credit on account'),h('span',{},'−'+fmt(creditOnAccount))):null,
+            h('div',{style:{display:'flex',justifyContent:'space-between',padding:'6px 0',fontWeight:'bold',fontSize:'15px',borderTop:'1px solid #c8a84b',marginTop:'4px'}},h('span',{},'TOTAL TO PAY'),h('span',{},fmt(totalPayable))),
+            (totalPayable===0&&bill.grandTotal>0)?h('div',{style:{fontSize:'12px',color:'#b94040',marginTop:'6px',fontWeight:'bold'}},'⚠ This cycle owes '+fmt(bill.grandTotal)+' but a credit is wiping it to £0 — check this is right before printing.'):null
+          );
+        })(),
         h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px'}},
           btn('b1','🖨 Print',()=>{doPrintBill();st.showBillModal=null;st.reprintStart=null;st.reprintDays=28;render();}),
           c.email

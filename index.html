@@ -1646,14 +1646,24 @@ function rCustomers(){
   if(needsOrder){st.customers=st.customers.map((c,i)=>c.listOrder!==undefined?c:{...c,listOrder:i});ps('customers');}
 
   function moveCustomer(id,dir){
-    const sorted=[...st.customers].sort((a,b)=>(a.listOrder||0)-(b.listOrder||0));
+    // Which field actually drives the ON-SCREEN order depends on whether we're
+    // filtered to a specific round (roundOrder) or viewing everyone (listOrder).
+    // The arrows must move whichever field is actually being displayed, or the
+    // customer will appear to move then snap back next render/sync — since the
+    // untouched field is what's really being sorted on.
+    const roundFiltered=st.customerRoundFilter!=='all';
+    const field=roundFiltered?'roundOrder':'listOrder';
+    const pool=roundFiltered
+      ? st.customers.filter(c=>c.roundId===st.customerRoundFilter)
+      : st.customers;
+    const sorted=[...pool].sort((a,b)=>(a[field]||0)-(b[field]||0));
     const idx=sorted.findIndex(c=>c.id===id);
     const swapIdx=dir==='up'?idx-1:idx+1;
     if(swapIdx<0||swapIdx>=sorted.length)return;
     const a=sorted[idx],b=sorted[swapIdx];
     st.customers=st.customers.map(c=>{
-      if(c.id===a.id)return{...c,listOrder:b.listOrder};
-      if(c.id===b.id)return{...c,listOrder:a.listOrder};
+      if(c.id===a.id)return{...c,[field]:b[field]};
+      if(c.id===b.id)return{...c,[field]:a[field]};
       return c;
     });
     ps('customers');render();

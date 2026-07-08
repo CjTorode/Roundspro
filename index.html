@@ -1699,6 +1699,7 @@ function rCustomers(){
               btn('b3','✏ Edit',()=>{st.showEditCustomer={...c};render();}),
               btn('b4','🏖 Holiday',()=>{st.showHoliday=c.id;render();}),
               btn('b3','📋 Papers',()=>{st.showPaperLog=c.id;st.paperChangeDate=tod();st.paperChangeTitle=(st.stock[0]&&st.stock[0].title)||'';st.paperChangeAction='add';render();}),
+              btn('b3','🧾 History',()=>{st.showPayHistory=c.id;render();}),
               !c.cancelled?btn('b6',{style:{background:'#7a3030',color:'#fff'}},'🚪 Final Bill',()=>{st.showFinalBill=c.id;st.finalBillDate=tod();render();}):null,
               btn('b6','🗑',async()=>{if(confirm('Delete '+c.name+'?\n\nThis cannot be undone.')){const delId=c.id;const delName=c.name;const backup=st.customers;st.customers=st.customers.filter(x=>x.id!==c.id);S.set('customers',st.customers);render();toast('Deleting '+delName+'…');try{await DB.deleteCustomer(delId);toast('✓ '+delName+' deleted');}catch(e){st.customers=backup;S.set('customers',st.customers);render();toast('⚠ Delete failed — check your connection and try again');}}})
             )
@@ -3023,6 +3024,41 @@ function rModals(){
           }},'✕')
         ))
       ),()=>{st.showPaperLog=null;render();}));
+    }
+  }
+
+  if(st.showPayHistory){
+    const c=st.customers.find(cu=>cu.id===st.showPayHistory);
+    if(c){
+      const hist=st.payments.filter(p=>p.customerId===c.id).slice().sort((a,b)=>b.date.localeCompare(a.date));
+      // The old Wednesday auto-charge bug (now disabled) never actually recorded which
+      // customer or how much it charged — it silently adjusted balances directly and
+      // only left one anonymous marker per Wednesday it ran. So we can't show an exact
+      // per-customer figure; the best we can do is show WHEN it ran and let Craig weigh
+      // that against whether this customer takes a weekly magazine and wasn't on holiday.
+      const globalWedRuns=st.payments.filter(p=>p.customerId===0&&/Weekly magazines — Wednesday/.test(p.note||'')).map(p=>p.date).sort();
+      const custWeeklyMags=(c.papers||[]).filter(t=>{const it=st.stock.find(s=>s.title===t);return it&&it.type==='magazine'&&it.freq==='weekly';});
+      const estPerRun=custWeeklyMags.reduce((s,t)=>{const it=st.stock.find(s2=>s2.title===t);return s+(it?it.sellPrice:0);},0);
+      ms.push(mod('🧾 Payment History — '+c.name,h('div',{},
+        h('div',{style:{fontSize:'13px',color:'#555',marginBottom:'14px'}},'Every payment, credit and adjustment recorded against this account, newest first. Current balance: ',
+          h('strong',{style:{color:c.balance<0?'#b94040':'#2a5e2a'}},c.balance<0?'-'+fmt(Math.abs(c.balance))+' (owed)':c.balance>0?fmt(c.balance)+' (credit)':'£0.00 (clear)')
+        ),
+        (globalWedRuns.length&&custWeeklyMags.length)?h('div',{className:'a3',style:{marginBottom:'14px',background:'#fff0e8',border:'1px solid #c86a3a'}},
+          h('div',{style:{fontWeight:'bold',fontSize:'12px',marginBottom:'4px',color:'#a03a1a'}},'⚠ Possible leftover from the old Wednesday auto-charge bug'),
+          h('div',{style:{fontSize:'12px',color:'#555',lineHeight:'1.5'}},
+            'This account takes '+custWeeklyMags.join(', ')+' ('+fmt(estPerRun)+'/week). The old bug (now disabled) ran on '+globalWedRuns.length+' Wednesday'+(globalWedRuns.length!==1?'s':'')+' before being fixed: '+globalWedRuns.map(fds).join(', ')+
+            '. It didn\'t record exactly who it charged, but if this account was active and not on holiday on those dates, it may have been charged up to roughly '+fmt(estPerRun*globalWedRuns.length)+' extra on top of what the cycle-close invoice will also (correctly) charge. Worth weighing against what the balance below looks like.'
+          )
+        ):null,
+        !hist.length?h('p',{style:{color:'#aaa',fontSize:'13px'}},'No payments or adjustments recorded yet for this account specifically — its balance may only reflect cycle-close charges and the old Wednesday bug, neither of which leave a per-customer line here.'):null,
+        ...hist.map(p=>h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 0',borderBottom:'1px solid #e8e0d0'}},
+          h('div',{},
+            h('div',{style:{fontSize:'13px',fontWeight:'bold'}},p.note||'(no note)'),
+            h('div',{style:{fontSize:'11px',color:'#888',marginTop:'2px'}},fds(p.date))
+          ),
+          h('div',{style:{fontWeight:'bold',fontSize:'14px',color:p.amount<0?'#b94040':'#2a5e2a',whiteSpace:'nowrap'}},(p.amount<0?'':'+')+fmt(p.amount))
+        ))
+      ),()=>{st.showPayHistory=null;render();}));
     }
   }
 

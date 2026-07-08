@@ -2676,15 +2676,16 @@ function rModals(){
       lbl('Note'),h('input',{type:'text',className:'fi',value:st.paymentNote,oninput:e=>st.paymentNote=e.target.value,placeholder:isCredit?'e.g. Overpayment credit':isAdjust?'e.g. Outstanding from previous invoice':'e.g. Weekly collection'}),
       h('button',{className:'btn b1 bf',style:{background:isCredit?'#2a5e2a':isAdjust?'#444':''},onclick:()=>{
         const amt=parseFloat(st.paymentAmount);if(isNaN(amt))return;
+        const enteredBy=isDriver()?'driver':'admin';
         if(isAdjust){
           // Set balance directly
           st.customers=st.customers.map(cu=>cu.id===c.id?{...cu,balance:parseFloat(amt.toFixed(2))}:cu);
-          st.payments=[...st.payments,{id:uuidv4(),customerId:c.id,amount:amt-c.balance,date:tod(),note:st.paymentNote||'Balance adjustment'}];
+          st.payments=[...st.payments,{id:uuidv4(),customerId:c.id,amount:amt-c.balance,date:tod(),note:st.paymentNote||'Balance adjustment',enteredBy:enteredBy}];
         } else {
           if(!amt)return;
           const finalAmt=isCredit?-amt:amt;
           st.customers=st.customers.map(cu=>cu.id===c.id?{...cu,balance:parseFloat((cu.balance+finalAmt).toFixed(2))}:cu);
-          st.payments=[...st.payments,{id:uuidv4(),customerId:c.id,amount:finalAmt,date:tod(),note:st.paymentNote||(isCredit?'Credit':'')}];
+          st.payments=[...st.payments,{id:uuidv4(),customerId:c.id,amount:finalAmt,date:tod(),note:st.paymentNote||(isCredit?'Credit':''),enteredBy:enteredBy}];
         }
         st.showPayment=null;st.paymentAmount='';st.paymentNote='';st.paymentIsCredit=false;st.paymentIsAdjust=false;pa();render();
         toast(isAdjust?'⚖ Balance set to '+fmt(Math.abs(amt))+(amt<0?' (owes)':' (credit)'):isCredit?'✓ Credit of '+fmt(amt)+' applied to '+c.name:'✓ Payment of '+fmt(amt)+' recorded for '+c.name);
@@ -3630,6 +3631,47 @@ ${wk.note ? '<p style="font-size:13px;color:#555;margin-top:12px">Note: '+wk.not
   <div style="text-align:center;font-size:11px;color:#aaa;margin-top:12px">Supply sheet for Invoice ${wk.invoiceNum} — ${biz.name || 'C J Torode Newsagent'}</div>
 </div>
 </body></html>`;
+}
+
+function rPaymentLog(){
+  const q=(st.payLogSearch||'').trim().toLowerCase();
+  const custMap={}; st.customers.forEach(c=>{custMap[c.id]=c;});
+  // customerId 0 was the old anonymous Wednesday-bug marker (now disabled) —
+  // it never named a real customer or amount, so it's just noise here.
+  let entries=st.payments.filter(p=>p.customerId&&p.customerId!==0);
+  if(isDriver()) entries=entries.filter(p=>{const c=custMap[p.customerId];return c&&c.roundId==='round-2';});
+  if(q) entries=entries.filter(p=>{const c=custMap[p.customerId];return c&&(c.name||'').toLowerCase().includes(q);});
+  entries=entries.slice().sort((a,b)=>b.date.localeCompare(a.date));
+  const totalIn=entries.filter(p=>p.amount>0).reduce((s,p)=>s+p.amount,0);
+  const totalOut=entries.filter(p=>p.amount<0).reduce((s,p)=>s+Math.abs(p.amount),0);
+  return h('div',{},
+    h('h2',{className:'st',style:{marginBottom:'16px'}},'🧾 Payment Log'),
+    h('div',{style:{fontSize:'13px',color:'#666',marginBottom:'16px',lineHeight:'1.5'}},'Every payment, credit and balance adjustment ever entered, newest first — whether entered by you or your driver. Use this to cross-check who\'s paid, same as your old spreadsheet checklist, or to spot anything unusual early next time.'),
+    h('div',{className:'card',style:{padding:'12px 16px',marginBottom:'16px'}},
+      h('input',{className:'fi',style:{marginBottom:'0'},placeholder:'Search by customer name…',value:st.payLogSearch||'',oninput:e=>{st.payLogSearch=e.target.value;render();}})
+    ),
+    h('div',{style:{display:'flex',gap:'12px',marginBottom:'16px',flexWrap:'wrap'}},
+      h('div',{className:'card',style:{padding:'10px 16px',flex:1,minWidth:'140px'}},h('div',{style:{fontSize:'11px',color:'#888',textTransform:'uppercase',letterSpacing:'.5px'}},'Money In'),h('div',{style:{fontSize:'18px',fontWeight:'bold',color:'#2a5e2a'}},fmt(totalIn))),
+      h('div',{className:'card',style:{padding:'10px 16px',flex:1,minWidth:'140px'}},h('div',{style:{fontSize:'11px',color:'#888',textTransform:'uppercase',letterSpacing:'.5px'}},'Charges/Reductions'),h('div',{style:{fontSize:'18px',fontWeight:'bold',color:'#b94040'}},fmt(totalOut))),
+      h('div',{className:'card',style:{padding:'10px 16px',flex:1,minWidth:'140px'}},h('div',{style:{fontSize:'11px',color:'#888',textTransform:'uppercase',letterSpacing:'.5px'}},'Entries'),h('div',{style:{fontSize:'18px',fontWeight:'bold'}},entries.length))
+    ),
+    !entries.length?h('div',{className:'card',style:{padding:'30px',textAlign:'center',color:'#aaa'}},q?'No matching entries.':'No payments recorded yet.'):
+    h('div',{className:'card',style:{padding:'0'}},
+      ...entries.map(function(p){
+        const c=custMap[p.customerId];
+        const who=p.enteredBy==='driver'?'🚲 Driver':p.enteredBy==='admin'?'🏪 You':'— (before this log started)';
+        return h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 16px',borderBottom:'1px solid #e8e0d0',cursor:c?'pointer':'default'},
+          onclick:c?(()=>{st.tab='customers';st.search=c.name;render();}):undefined},
+          h('div',{},
+            h('div',{style:{fontWeight:'bold',fontSize:'14px'}},c?c.name:'(deleted customer)'),
+            h('div',{style:{fontSize:'12px',color:'#888',marginTop:'2px'}},p.note||'(no note)'),
+            h('div',{style:{fontSize:'11px',color:'#aaa',marginTop:'2px'}},fds(p.date)+' · '+who)
+          ),
+          h('div',{style:{fontWeight:'bold',fontSize:'15px',color:p.amount<0?'#b94040':'#2a5e2a',whiteSpace:'nowrap'}},(p.amount<0?'':'+')+fmt(p.amount))
+        );
+      })
+    )
+  );
 }
 
 function rShop(){
@@ -4682,7 +4724,7 @@ function render(){
     const _t=_ni[_idx];
     if(_t){_t.focus();try{_t.setSelectionRange(_fs[0],_fs[1]);}catch(e){}}
   }
-  const tabs=isDriver()?[{k:'customers',i:'👥',l:'Customers'},{k:'rounds',i:'🚲',l:'Rounds'},{k:'billing',i:'£',l:'Billing'}]:[{k:'dashboard',i:'⊞',l:'Dashboard'},{k:'customers',i:'👥',l:'Customers'},{k:'rounds',i:'🚲',l:'Rounds'},{k:'billing',i:'£',l:'Billing'},{k:'stock',i:'📦',l:'Stock'},{k:'calendar',i:'📅',l:'Calendar'},{k:'shop',i:'🏪',l:'Shop'}];
+  const tabs=isDriver()?[{k:'customers',i:'👥',l:'Customers'},{k:'rounds',i:'🚲',l:'Rounds'},{k:'billing',i:'£',l:'Billing'},{k:'paymentlog',i:'🧾',l:'Payments'}]:[{k:'dashboard',i:'⊞',l:'Dashboard'},{k:'customers',i:'👥',l:'Customers'},{k:'rounds',i:'🚲',l:'Rounds'},{k:'billing',i:'£',l:'Billing'},{k:'paymentlog',i:'🧾',l:'Payments'},{k:'stock',i:'📦',l:'Stock'},{k:'calendar',i:'📅',l:'Calendar'},{k:'shop',i:'🏪',l:'Shop'}];
   app.appendChild(h('header',{className:'hdr'},h('div',{className:'hdr-in'},
     h('div',{style:{display:'flex',alignItems:'center',gap:'12px'}},h('span',{style:{fontSize:'28px'}},'🗞'),h('div',{},h('div',{className:'logo-n'},'C J TORODE'),h('div',{className:'logo-s'},'Newsagent'))),
     h('div',{style:{display:'flex',alignItems:'center',gap:'14px'}},
@@ -4699,7 +4741,7 @@ function render(){
     ...tabs.map(t=>h('button',{className:'nb'+(st.tab===t.k?' on':''),onclick:()=>{st.tab=t.k;render();}},t.i+' '+t.l)),
     st.gstEnabled?h('div',{style:{marginLeft:'auto',padding:'0 16px',fontSize:'12px',color:'#c8a84b',letterSpacing:'1px'}},'✓ GST '+st.gstRate+'%'):null
   )));
-  var tabFn={dashboard:rDash,customers:rCustomers,rounds:rRounds,billing:rBilling,stock:rStock,calendar:rCal,shop:rShop}[st.tab];
+  var tabFn={dashboard:rDash,customers:rCustomers,rounds:rRounds,billing:rBilling,paymentlog:rPaymentLog,stock:rStock,calendar:rCal,shop:rShop}[st.tab];
   const content=tabFn?tabFn():h('div',{});
   app.appendChild(h('main',{className:'main'},content||h('div',{})));
   app.appendChild(h('div',{style:{height:'40px'}}));

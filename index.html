@@ -559,13 +559,35 @@ async function startApp(){
   st.customers = S.get('customers', IR ? [] : []);
   render(); // Show app immediately
   await DB.load(); // Fetch fresh from Supabase
+  DB._lastLoadAt = Date.now();
+  captureBaseline(); // Snapshot the deployed code so we can detect when it changes
   // Auto-sync every 30 seconds (silent)
   setInterval(async () => {
     if(getSB() && !DB._scanInProgress && (Date.now() - (DB._lastLocalEditAt||0)) > 5000){
       DB._silent = true;
       await DB.load();
+      DB._lastLoadAt = Date.now();
     }
   }, 30000);
+  // Check every 2 minutes whether a newer version has been deployed
+  setInterval(checkForUpdate, 120000);
+  // If this tab has been hidden/idle for over a minute (left open overnight,
+  // switched away to another tab/device, etc.), force a fresh sync the moment
+  // you come back to it — before you can make any edit. Without this, a stale
+  // tab that missed a deletion made elsewhere would re-upload its old full
+  // customer list on your next save and silently resurrect the deleted rows.
+  // Also check for a newer deployed version at the same moment.
+  document.addEventListener('visibilitychange', async () => {
+    if(document.visibilityState !== 'visible') return;
+    checkForUpdate();
+    if(getSB() && !DB._scanInProgress
+       && (Date.now() - (DB._lastLoadAt||0)) > 60000
+       && (Date.now() - (DB._lastLocalEditAt||0)) > 5000){
+      DB._silent = true;
+      await DB.load();
+      DB._lastLoadAt = Date.now();
+    }
+  });
 }
 
 const IR=[];
@@ -1405,6 +1427,47 @@ function toast(msg,duration){
   t.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1a1a1a;color:#c8a84b;padding:12px 24px;border-radius:4px;font-family:Georgia,serif;font-size:13px;z-index:9999;border:1px solid #c8a84b;box-shadow:0 4px 20px rgba(0,0,0,.3);max-width:90vw';
   t.textContent=msg;document.body.appendChild(t);
   setTimeout(()=>{t.style.opacity='0';t.style.transition='opacity .5s';setTimeout(()=>{try{document.body.removeChild(t);}catch(e){}},500);},duration||2500);
+}
+
+// ── UPDATE DETECTION ────────────────────────────────────────────────
+// This is a single-file app: a tab that's already open keeps running whatever
+// code it loaded, even after a new version is pushed to GitHub/Netlify. That
+// meant one person's device could silently run stale code indefinitely (this
+// is exactly how yesterday's deleted duplicate customers came back — a tab
+// running the old code re-uploaded its old data). Instead of relying on
+// anyone remembering to bump a version number, this just re-fetches the
+// live deployed file and compares it byte-for-byte to what's actually
+// running. If Craig pushes ANY change, every open tab — his or the
+// driver's — will notice within a couple of minutes and show a banner
+// rather than keep working from outdated code.
+let _baselineHTML=null;
+async function captureBaseline(){
+  try{
+    const res=await fetch(window.location.pathname+'?_v='+Date.now(),{cache:'no-store'});
+    _baselineHTML=await res.text();
+  }catch(e){ /* ignore — will just try again on next check */ }
+}
+async function checkForUpdate(){
+  if(!_baselineHTML) return;
+  try{
+    const res=await fetch(window.location.pathname+'?_v='+Date.now(),{cache:'no-store'});
+    const txt=await res.text();
+    if(txt && txt!==_baselineHTML) showUpdateBanner();
+  }catch(e){ /* offline or blip — try again next time */ }
+}
+function showUpdateBanner(){
+  if(document.getElementById('update-banner'))return; // already showing
+  const b=document.createElement('div');
+  b.id='update-banner';
+  b.style.cssText='position:fixed;top:0;left:0;right:0;background:#1a1a1a;color:#c8a84b;padding:12px 16px;font-family:Georgia,serif;font-size:14px;z-index:99999;display:flex;justify-content:center;align-items:center;gap:14px;flex-wrap:wrap;border-bottom:2px solid #c8a84b;box-shadow:0 2px 12px rgba(0,0,0,.35)';
+  const span=document.createElement('span');
+  span.textContent='🔄 A newer version of this app is available — reload to make sure you\'re seeing the latest data and fixes.';
+  const btn=document.createElement('button');
+  btn.textContent='Reload now';
+  btn.style.cssText='background:#c8a84b;color:#1a1a1a;border:none;padding:7px 16px;border-radius:3px;font-weight:bold;cursor:pointer;font-family:Georgia,serif;font-size:13px';
+  btn.onclick=()=>location.reload();
+  b.appendChild(span);b.appendChild(btn);
+  document.body.appendChild(b);
 }
 
 // DOM helpers

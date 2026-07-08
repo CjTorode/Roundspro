@@ -2724,12 +2724,22 @@ function rModals(){
             (totalPayable===0&&bill.grandTotal>0)?h('div',{style:{fontSize:'12px',color:'#b94040',marginTop:'6px',fontWeight:'bold'}},'⚠ This cycle owes '+fmt(bill.grandTotal)+' but a credit is wiping it to £0 — check this is right before printing.'):null
           );
         })(),
-        h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px'}},
+        h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px',marginBottom:'8px'}},
           btn('b1','🖨 Print',()=>{doPrintBill();st.showBillModal=null;st.reprintStart=null;st.reprintDays=28;render();}),
           c.email
             ?btn('b4','📧 Email to '+c.email.split('@')[0],()=>{doEmailBill();st.showBillModal=null;st.reprintStart=null;st.reprintDays=28;render();})
             :h('div',{style:{background:'#f5f5f5',border:'1px solid #ddd',borderRadius:'3px',padding:'10px 6px',fontSize:'11px',color:'#aaa',textAlign:'center'}},'📧 No email on file')
-        )
+        ),
+        btn('b3',{style:{width:'100%'}},'⚖ Correct Balance for This Cycle',()=>{
+          const rpEnd=new Date(rpStart);rpEnd.setDate(rpEnd.getDate()+rpDays-1);
+          const periodLabel=fds(rpStart)+' – '+fds(rpEnd.toISOString().split('T')[0]);
+          const currentBalTxt=c.balance<0?'-'+fmt(Math.abs(c.balance))+' (owed)':c.balance>0?fmt(c.balance)+' (credit)':'£0.00 (clear)';
+          st.showBillModal=null;st.reprintStart=null;st.reprintDays=28;
+          st.showPayment=c.id;st.paymentIsAdjust=true;st.paymentIsCredit=false;
+          st.paymentAmount='';
+          st.paymentNote='Correction — '+periodLabel+' recalculated to '+fmt(bill.grandTotal)+'. Balance currently shows '+currentBalTxt+'.';
+          render();
+        })
       ),()=>{st.showBillModal=null;st.reprintStart=null;st.reprintDays=28;render();}));
     }
   }

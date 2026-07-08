@@ -672,6 +672,7 @@ const st={
   shopEditWeek: null,
   shopViewWeek: null,
   billingRoundFilter: 'all',
+  billingReprintStart: null, // null = current live cycle; set to reprint a past/closed cycle in bulk
   reprintStart: null,
   reprintDays: 28,
   // ── NO PAPER DAYS ────────────────────────────────────────────────
@@ -1042,12 +1043,28 @@ function doPrint(html){
   w.document.open();w.document.write(printHtml);w.document.close();
 }
 
-function printAllBills(custList){
+// Temporarily point a round's live billingStart/billingPeriod at a past cycle
+// for the duration of fn(), then restore it — used so bulk print/email/PDF
+// actions can correctly reprint a cycle that's already closed (e.g. you closed
+// the cycle before realising some invoices still needed emailing) without
+// permanently moving the round's real billing date.
+function withBillingDateOverride(roundId, startOverride, fn){
+  if(!startOverride) return fn();
+  const startKey = roundId==='round-2'?'billingStart2':'billingStart';
+  const periodKey = roundId==='round-2'?'billingPeriod2':'billingPeriod';
+  const origStart = st[startKey], origPeriod = st[periodKey];
+  st[startKey]=startOverride;
+  const rpEnd=new Date(startOverride);rpEnd.setDate(rpEnd.getDate()+27);
+  st[periodKey]=fds(startOverride)+' – '+fds(rpEnd.toISOString().split('T')[0]);
+  try{ return fn(); } finally { st[startKey]=origStart; st[periodKey]=origPeriod; }
+}
+
+function printAllBills(custList, isReprint){
   if(!custList.length)return;
   const css=getInvoiceCSS();
   // Build each invoice as a full page with page break after (except last)
   const pages=custList.map(function(c,i){
-    const body=buildInvoiceHTML(c);
+    const body=buildInvoiceHTML(c, undefined, isReprint);
     const pb=i<custList.length-1?'<div style="page-break-after:always"></div>':'';
     return body+pb;
   });
@@ -1383,7 +1400,7 @@ function emailBill(cid, startOverride, daysOverride){
 }
 
 // emailAllBills — sends all via SendGrid with progress toasts
-async function emailAllBills(custList, startOverride, daysOverride){
+async function emailAllBills(custList, startOverride, daysOverride, isReprint){
   const allCusts = custList || (isDriver()?st.customers.filter(c=>c.roundId==='round-2'):st.customers);
   const withEmail=allCusts.filter(c=>c.email);
   const without=allCusts.filter(c=>!c.email);
@@ -1392,7 +1409,7 @@ async function emailAllBills(custList, startOverride, daysOverride){
   let sent=0, failed=[];
   for(const c of withEmail){
     try{
-      await sendBillViaSendGrid(c, startOverride, daysOverride);
+      await sendBillViaSendGrid(c, startOverride, daysOverride, undefined, isReprint);
       sent++;
     } catch(e){
       failed.push(c.name+' ('+e.message+')');
@@ -1865,6 +1882,7 @@ function rBilling(){
   }
 
   // Top action bar — round filter + print/email buttons
+  const isBulkReprint = st.billingRoundFilter!=='all' && !!st.billingReprintStart;
   const topBar = h('div',{className:'card',style:{marginBottom:'16px',padding:'12px 16px'}},
     h('div',{style:{display:'flex',alignItems:'center',gap:'8px',flexWrap:'wrap'}},
       h('div',{style:{fontSize:'12px',color:'#888',fontWeight:'bold',textTransform:'uppercase',letterSpacing:'.5px',marginRight:'4px'}},'Round:'),
@@ -1874,7 +1892,7 @@ function rBilling(){
             background:(st.billingRoundFilter||'all')===(r.id||'all')?'#1a1a1a':'#f0ebe0',
             color:(st.billingRoundFilter||'all')===(r.id||'all')?'#c8a84b':'#555',
             border:'1px solid #ccc',fontWeight:(st.billingRoundFilter||'all')===(r.id||'all')?'bold':'normal'},
-          onclick:()=>{st.billingRoundFilter=r.id||'all';render();}
+          onclick:()=>{st.billingRoundFilter=r.id||'all';st.billingReprintStart=null;render();}
         }, r.name)
       ),
       h('div',{style:{marginLeft:'auto',display:'flex',gap:'8px',flexWrap:'wrap'}},
@@ -1885,26 +1903,43 @@ function rBilling(){
             ? (st.rounds.find(r=>r.id===st.billingRoundFilter)||{name:'Round'}).name.replace(/\s+/g,'')
             : 'AllRounds';
           const period = (st.billingPeriod||st.billingStart).replace(/\s+/g,'').replace(/–|-/g,'to');
-          const filename = 'RoundsPro-'+roundName+'-'+period+'.pdf';
-          saveCombinedPDF(custs, filename);
+          const filename = 'RoundsPro-'+roundName+'-'+period+(isBulkReprint?'-REPRINT':'')+'.pdf';
+          withBillingDateOverride(st.billingRoundFilter, st.billingReprintStart, ()=>{
+            saveCombinedPDF(custs, filename, isBulkReprint);
+          });
         }),
         btn('b1',{style:{padding:'7px 16px',fontSize:'13px'}},'🖨 Print Bills',()=>{
           const custs = getBillingCusts();
           const toPrint = custs.filter(c=>!(c.email||'').trim());
           const skipped = custs.filter(c=>(c.email||'').trim());
           if(!toPrint.length){alert('Nothing to print — all customers have email addresses.\n\nUse "📧 Email ALL" instead.');return;}
-          printAllBills(toPrint);
+          withBillingDateOverride(st.billingRoundFilter, st.billingReprintStart, ()=>{
+            printAllBills(toPrint, isBulkReprint);
+          });
           toast('🖨 Printing '+toPrint.length+' bill'+(toPrint.length!==1?'s':'')+(skipped.length?' · Skipped '+skipped.length+' (have email)':''));
         }),
         btn('b4',{style:{padding:'7px 16px',fontSize:'13px'}},'📧 Email ALL',()=>{
           const custs = getBillingCusts();
           const toEmail = custs.filter(c=>c.email);
           if(!toEmail.length){alert('No customers with email addresses in this selection.');return;}
-          if(!confirm('Send invoices to '+toEmail.length+' customer'+(toEmail.length!==1?'s':'')+' by email?\n\nEmails will be sent automatically via SendGrid — no Mail app needed.'))return;
-          emailAllBills(toEmail);
+          if(!confirm('Send invoices to '+toEmail.length+' customer'+(toEmail.length!==1?'s':'')+' by email?'+(isBulkReprint?'\n\n⚠ This is a REPRINT of a past cycle ('+fds(st.billingReprintStart)+').':'')+'\n\nEmails will be sent automatically via SendGrid — no Mail app needed.'))return;
+          emailAllBills(toEmail, isBulkReprint?st.billingReprintStart:undefined, isBulkReprint?28:undefined, isBulkReprint);
         })
       )
     ),
+    st.billingRoundFilter!=='all' ? h('div',{style:{marginTop:'12px',paddingTop:'12px',borderTop:'1px solid #e8e0d0',display:'flex',alignItems:'flex-end',gap:'10px',flexWrap:'wrap'}},
+      h('div',{},
+        lbl('Bill For Cycle Starting'),
+        h('input',{type:'date',className:'fi',style:{marginBottom:'0',width:'160px'},
+          value:st.billingReprintStart||getBillingStart({roundId:st.billingRoundFilter}),
+          onchange:e=>{st.billingReprintStart=e.target.value;render();}
+        })
+      ),
+      isBulkReprint
+        ? h('button',{className:'btn b3',style:{padding:'6px 12px',fontSize:'12px',marginBottom:'1px'},onclick:()=>{st.billingReprintStart=null;render();}},'↩ Back to current cycle')
+        : h('div',{style:{fontSize:'11px',color:'#888',paddingBottom:'4px'}},'← Current live cycle'),
+      isBulkReprint?h('div',{style:{fontSize:'12px',color:'#b94040',fontWeight:'bold',paddingBottom:'4px'}},'⚠ Reprinting a past cycle — safe to use even after this cycle has closed'):null
+    ):null,
     h('div',{style:{fontSize:'12px',color:'#888',marginTop:'8px'}},
       (()=>{
         const custs = getBillingCusts();
@@ -4574,11 +4609,11 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
 }
 
 // ── SAVE COMBINED PDF ────────────────────────────────────────────
-function saveCombinedPDF(custList, filename){
+function saveCombinedPDF(custList, filename, isReprint){
   if(!custList.length){alert('No customers to save.');return;}
   const css = getInvoiceCSS();
   const pages = custList.map(function(c,i){
-    const body = buildInvoiceHTML(c);
+    const body = buildInvoiceHTML(c, undefined, isReprint);
     return body + (i < custList.length-1 ? '<div style="page-break-after:always"></div>' : '');
   });
   // Cover sheet at the front

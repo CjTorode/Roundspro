@@ -944,21 +944,14 @@ function calcBill(c,start,days){
 
 
 function checkWedCharge(){
-  const ts=tod();const d=new Date(ts);
-  if(d.getDay()!==3||st.lastWedCharge===ts)return;
-  const wm=st.stock.filter(s=>s.type==='magazine'&&s.freq==='weekly');
-  if(!wm.length)return;
-  let charged=false;
-  st.customers=st.customers.map(c=>{
-    const cw=c.papers.filter(p=>wm.some(m=>m.title===p));if(!cw.length)return c;
-    const onH=(c.holidays||[]).some(h=>(h.type==='range'&&ts>=h.start&&ts<=h.end)||(h.type==='day'&&h.date===ts));
-    if(onH)return c;
-    const charge=cw.reduce((s,p)=>{const it=wm.find(m=>m.title===p);return s+(it?it.sellPrice:0);},0);
-    const g=!c.gstExempt?charge*((st.gstEnabled?st.gstRate:0)/100):0;
-    charged=true;
-    return{...c,balance:parseFloat((c.balance-charge-g).toFixed(2))};
-  });
-  if(charged){st.lastWedCharge=ts;st.payments=[...st.payments,{id:uuidv4(),customerId:0,amount:0,date:ts,note:'Auto: Weekly magazines — Wednesday '+fd(ts)}];pa();}
+  // DISABLED (08 Jul 2026): this used to deduct weekly-magazine costs from
+  // customer balances live, every Wednesday. calcBill() already charges the
+  // correct number of weekly-magazine Wednesdays (max 4) as part of the
+  // normal 28-day cycle invoice at closeCycle(). Having both meant weekly
+  // magazines were being charged twice per cycle — once here in real time,
+  // once again when the cycle closed. Left as a no-op rather than deleted
+  // so lastWedCharge/history stay intact and this is easy to find again.
+  return;
 }
 
 // Monthly magazines are included automatically in the 4-week cycle bill
@@ -2771,9 +2764,15 @@ function rModals(){
         const oldPapers=original?(original.papers||[]):[];
         const newPapers=ec.papers||[];
         var log=[...(ec.paperLog||[])];
-        // Ensure every newly ticked paper has an "add" entry dated today —
-        // it should only be charged for from the day it was actually added, not backdated to cycle start
+        // Only log an "add" for papers that are genuinely NEW this save (weren't
+        // ticked before). Papers that were already ticked and stay ticked must
+        // NOT get a backfilled "add" entry dated today — calcBill() treats an
+        // "add" entry as "not active before this date", which would wipe out
+        // billing for every day earlier in the cycle for long-standing papers
+        // that simply never had log history. Untouched papers with no history
+        // correctly fall back to "always active" in papersOnDate().
         newPapers.forEach(function(p){
+          if(oldPapers.includes(p))return; // unchanged — leave log alone
           var hasAdd=log.some(function(e){return e.title===p&&e.action==='add';});
           if(!hasAdd)log.push({title:p,action:'add',date:tod()});
         });

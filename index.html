@@ -3994,10 +3994,20 @@ MAGAZINES (lower section, below the papers):
     "Bella      2 / 5 — 180"  → title=Bella, ret_qty=2, del_qty=5, del_price=1.80
     "Best       3 / 4 — 299"  → title=Best, ret_qty=3, del_qty=4, del_price=2.99
     "Chat       4 / 7 — 145"  → title=Chat, ret_qty=4, del_qty=7, del_price=1.45
-    "TAB        8 / 14 — 145" → title=Take A Break, ret_qty=8, del_qty=14, del_price=1.45
+    "Zonk Weekly 8 / 14 — 145" → title=Zonk Weekly, ret_qty=8, del_qty=14, del_price=1.45  (illustrative title only — not a real magazine, just showing the slash format)
     "TV Choice  6   36 — 85"  → title=TV Choice, ret_qty=6, del_qty=36, del_price=0.85
     "TAB fiction feast 3  9 — 350" → title=TAB Fiction Feast, ret_qty=3, del_qty=9, del_price=3.50
     "Yours      3 / 5 — 230"  → title=Yours, ret_qty=3, del_qty=5, del_price=2.30
+
+  ⚠ CRITICAL — DO NOT COPY EXAMPLE NUMBERS: The examples above (and anywhere else in
+  these instructions) exist ONLY to show you the layout pattern. Their titles and
+  numbers are illustrative, not data from today's page. Never output a title, quantity,
+  or price that you are recalling from these instructions rather than actually seeing
+  in the photo. If a real row on the page is faint, cramped, or partly obscured, use
+  null for whatever you cannot clearly read — do NOT fall back to a number that "looks
+  familiar" or matches an abbreviation you recognise from these examples. Every single
+  del_qty, del_price, ret_qty and ret_price you output must be traceable to pixels you
+  can actually see on this specific photo.
 
   NOTE: "Woman" and "W.Own" (Womans Own) are TWO DIFFERENT titles — do not confuse them.
   "Woman" abbreviation = Woman magazine (del_qty usually 4-6)
@@ -4029,7 +4039,7 @@ Return ONLY valid JSON (absolutely no markdown, no explanation, no backticks):
     {"title":"Mirror","mon_del":null,"mon_ret":null,"tue_del":null,"tue_ret":null,"wed_del":null,"wed_ret":null,"thu_del":5,"thu_ret":3,"fri_del":null,"fri_ret":null,"sat_del":null,"sat_ret":null,"sun_del":null,"sun_ret":null}
   ],
   "mags": [
-    {"title":"Take A Break","del_qty":12,"del_price":1.45,"ret_qty":0,"ret_price":null},
+    {"title":"Example Magazine","del_qty":12,"del_price":1.45,"ret_qty":0,"ret_price":null},
     {"title":"Womans Weekly","del_qty":7,"del_price":2.55,"ret_qty":2,"ret_price":1.99}
   ]
 }
@@ -4143,6 +4153,16 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
                 const prevDelPrice = wm.delPrice;
                 const prevRetQty = wm.retQty;
                 const prevRetPrice = wm.retPrice;
+                // ⚠ Suspicious pattern: a title with NO delivery data at all yet this cycle
+                // suddenly getting a full delivery + return figure in the same scan pass.
+                // This is the exact fingerprint of the AI echoing a worked example from its
+                // own instructions instead of reading the photo — flag it loudly so it gets
+                // a manual check rather than silently landing on the bill.
+                const hadNoPriorData = (prevDelQty==null||prevDelQty==='') && (prevDelPrice==null||prevDelPrice==='');
+                const scanHasReturnToo = sm.ret_qty != null && sm.ret_qty > 0;
+                if(hadNoPriorData && scanHasReturnToo){
+                  magSkipped.push({title: wm.title, reason: '⚠ NEW this scan with both a delivery AND a return figure at once — double-check this row against the photo before trusting it'});
+                }
                 // For quantities — REPLACE, don't add. Magazines are a single weekly delivery,
                 // so rescanning the same sheet (e.g. to add returns/prices later) must not
                 // double up the quantity that was already recorded earlier.
@@ -4214,11 +4234,15 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
               if(paperUpdates > 0) summaryParts.push(paperUpdates+' paper field'+(paperUpdates!==1?'s':''));
               if(magUpdates > 0) summaryParts.push(magUpdates+' mag'+(magUpdates!==1?'s':''));
               let summary = summaryParts.length ? ' — updated '+summaryParts.join(' & ') : ' — no new data found';
-              if(magSkipped.length){
-                const names = magSkipped.map(s=>s.title+' ('+s.reason+')').join(', ');
-                summary += '. Skipped: '+names;
+              const magCritical = magSkipped.filter(s=>s.reason.indexOf('⚠')===0);
+              const magOther = magSkipped.filter(s=>s.reason.indexOf('⚠')!==0);
+              if(magOther.length){
+                summary += '. Skipped: '+magOther.map(s=>s.title+' ('+s.reason+')').join(', ');
               }
-              toast('✓ Scan complete'+summary+'. Saving…', magSkipped.length ? 6000 : 2500);
+              if(magCritical.length){
+                summary += '. ⚠ PLEASE CHECK: '+magCritical.map(s=>s.title+' — '+s.reason.replace('⚠ ','')).join(', ');
+              }
+              toast('✓ Scan complete'+summary+'. Saving…', magSkipped.length ? 9000 : 2500);
               try {
                 await DB.saveShopWeeks();
                 toast('✓ Saved — other devices will update within 30 seconds');

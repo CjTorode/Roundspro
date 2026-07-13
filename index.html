@@ -3316,6 +3316,19 @@ function rModals(){
                     toast('⚠ Test payment failed to write: '+e.message);
                   }
                 }),
+                btn('b4',{style:{flex:'1'}},'🔍 Inspect Payments Columns',async ()=>{
+                  toast('Checking schema…');
+                  try{
+                    const res=await fetch(_sbUrl+'/rest/v1/',{headers:{apikey:_sbKey,Authorization:'Bearer '+_sbKey}});
+                    const spec=await res.json();
+                    const defs=(spec.definitions||spec.components&&spec.components.schemas||{});
+                    const cols=defs.payments?Object.keys(defs.payments.properties||{}):null;
+                    if(cols){ alert('Actual columns on the payments table:\n\n'+cols.join('\n')); }
+                    else { console.log(spec); alert('Could not read schema — raw response logged to console (F12 or right-click > Inspect).'); }
+                  }catch(e){
+                    alert('Schema check failed: '+e.message);
+                  }
+                }),
                 btn('b4',{style:{flex:'1'}},'🏪 Push Shop Weeks',async ()=>{
                   toast('Pushing shop weeks…');
                   try{

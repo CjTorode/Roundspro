@@ -252,7 +252,7 @@ const DB = {
       const roundMap = {};
       st.customers.forEach(c => { roundMap[c.id] = {roundId:c.roundId||null, roundOrder:c.roundOrder||0, listOrder:c.listOrder||0, extraDeliveries:c.extraDeliveries||[]}; });
       await sbUpsert('settings', [{user_id:USER_ID, key:'customerRoundMap', value:JSON.stringify(roundMap)}]);
-    } catch(e){ console.warn('saveCustomers:', e.message); }
+    } catch(e){ console.warn('saveCustomers:', e.message); toast('⚠ Customer sync failed: ' + e.message); }
     S.set('customers', st.customers);
   },
 
@@ -281,7 +281,7 @@ const DB = {
         delivery_days: s.deliveryDays||[],
       }));
       await sbUpsert('stock', rows);
-    } catch(e){ console.warn('saveStock:', e.message); }
+    } catch(e){ console.warn('saveStock:', e.message); toast('⚠ Stock sync failed: ' + e.message); }
     S.set('stock', st.stock);
   },
 
@@ -296,7 +296,7 @@ const DB = {
     try {
       const rows = st.rounds.map(r => { const {user_id, ...rest} = r; return {...rest, user_id: USER_ID}; });
       await sbUpsert('rounds', rows);
-    } catch(e){ console.warn('saveRounds:', e.message); }
+    } catch(e){ console.warn('saveRounds:', e.message); toast('⚠ Rounds sync failed: ' + e.message); }
     S.set('rounds', st.rounds);
   },
 
@@ -305,7 +305,10 @@ const DB = {
     try {
       const rows = st.payments.map(p => { const {user_id, ...rest} = p; return {...rest, user_id: USER_ID}; });
       await sbUpsert('payments', rows);
-    } catch(e){ console.warn('savePayments:', e.message); }
+    } catch(e){
+      console.warn('savePayments:', e.message);
+      toast('⚠ Payment sync failed: ' + e.message);
+    }
     S.set('payments', st.payments);
   },
 
@@ -318,7 +321,7 @@ const DB = {
         value: JSON.stringify(st[k])
       }));
       await sbUpsert('settings', rows);
-    } catch(e){ console.warn('saveSettings:', e.message); }
+    } catch(e){ console.warn('saveSettings:', e.message); toast('⚠ Settings sync failed: ' + e.message); }
     DB.SETTINGS_KEYS.forEach(k => S.set(k, st[k]));
   },
 
@@ -730,6 +733,10 @@ applyListOrder();
 // ps(k) — persist a single key. Routes to Supabase for relational data, settings table for scalars.
 function ps(k){
   S.set(k,st[k]); // always keep local cache in sync
+  // Flag that a local edit just happened so the 30s auto-sync / tab-refocus
+  // sync backs off and doesn't overwrite it with a stale server copy before
+  // the save below has actually landed in Supabase.
+  DB._lastLocalEditAt = Date.now();
   switch(k){
     case 'customers':   DB.saveCustomers(); break;
     case 'stock':       DB.saveStock();     break;
@@ -743,6 +750,7 @@ function ps(k){
 }
 // pa() — persist all
 function pa(){
+  DB._lastLocalEditAt = Date.now();
   ['customers','stock','rounds','payments'].forEach(k=>S.set(k,st[k]));
   DB.SETTINGS_KEYS.forEach(k=>S.set(k,st[k]));
   DB.saveCustomers();

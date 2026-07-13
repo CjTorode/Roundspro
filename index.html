@@ -303,7 +303,15 @@ const DB = {
   async savePayments(){
     if(!getSB()) return;
     try {
-      const rows = st.payments.map(p => { const {user_id, ...rest} = p; return {...rest, user_id: USER_ID}; });
+      const rows = st.payments.map(p => ({
+        id: p.id,
+        user_id: USER_ID,
+        customer_id: p.customerId,
+        amount: p.amount,
+        date: p.date,
+        note: p.note || '',
+        entered_by: p.enteredBy || '',
+      }));
       await sbUpsert('payments', rows);
     } catch(e){
       console.warn('savePayments:', e.message);
@@ -401,7 +409,12 @@ const DB = {
         return r;
       }); S.set('stock',st.stock); }
       if(rounds && rounds.length){ st.rounds = rounds.map(r=>{delete r.user_id;return r;}); S.set('rounds',st.rounds); }
-      if(pays && pays.length){ st.payments = pays.map(r=>{delete r.user_id;return r;}); S.set('payments',st.payments); }
+      if(pays && pays.length){ st.payments = pays.map(r=>{
+        delete r.user_id;
+        if(r.customer_id !== undefined){ r.customerId = r.customer_id; delete r.customer_id; }
+        if(r.entered_by !== undefined){ r.enteredBy = r.entered_by||''; delete r.entered_by; }
+        return r;
+      }); S.set('payments',st.payments); }
       if(settings){
         let roundMap = null;
         settings.forEach(row=>{
@@ -3290,7 +3303,7 @@ function rModals(){
                   toast('Testing…');
                   const testId=uuidv4();
                   try{
-                    await sbUpsert('payments',[{id:testId,user_id:USER_ID,customerId:0,amount:0.01,date:tod(),note:'__sync_test__',enteredBy:'test'}]);
+                    await sbUpsert('payments',[{id:testId,user_id:USER_ID,customer_id:0,amount:0.01,date:tod(),note:'__sync_test__',entered_by:'test'}]);
                     const back=await sbSelect('payments');
                     const found=(back||[]).find(r=>r.id===testId);
                     if(found){

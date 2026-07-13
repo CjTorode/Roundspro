@@ -3283,8 +3283,26 @@ function rModals(){
         getSB()
           ? h('div',{},
               h('div',{style:{fontSize:'13px',color:'#2a5e2a',marginBottom:'8px'}},'✓ Connected — data syncs automatically.'),
+              h('div',{style:{fontSize:'11px',color:'#888',marginBottom:'8px',wordBreak:'break-all'}},'Project: '+_sbUrl),
               h('div',{style:{display:'flex',gap:'8px',marginBottom:'4px',flexWrap:'wrap'}},
                 btn('b1',{style:{flex:'1'}},'☁ Force Sync Now',async ()=>{toast('Syncing…');await DB.load();}),
+                btn('b4',{style:{flex:'1'}},'🧪 Test Payments Sync',async ()=>{
+                  toast('Testing…');
+                  const testId=uuidv4();
+                  try{
+                    await sbUpsert('payments',[{id:testId,user_id:USER_ID,customerId:0,amount:0.01,date:tod(),note:'__sync_test__',enteredBy:'test'}]);
+                    const back=await sbSelect('payments');
+                    const found=(back||[]).find(r=>r.id===testId);
+                    if(found){
+                      await sbDelete('payments',testId); // clean up
+                      toast('✓ Test payment wrote AND read back fine — sync itself is healthy.');
+                    } else {
+                      toast('⚠ Test payment wrote OK but did NOT come back on read — check RLS SELECT policy on payments table.');
+                    }
+                  }catch(e){
+                    toast('⚠ Test payment failed to write: '+e.message);
+                  }
+                }),
                 btn('b4',{style:{flex:'1'}},'🏪 Push Shop Weeks',async ()=>{
                   toast('Pushing shop weeks…');
                   try{

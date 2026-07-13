@@ -308,7 +308,7 @@ const DB = {
         user_id: USER_ID,
         customer_id: p.customerId,
         amount: p.amount,
-        date: p.date,
+        payment_date: p.date,
         note: p.note || '',
         entered_by: p.enteredBy || '',
       }));
@@ -413,6 +413,8 @@ const DB = {
         delete r.user_id;
         if(r.customer_id !== undefined){ r.customerId = r.customer_id; delete r.customer_id; }
         if(r.entered_by !== undefined){ r.enteredBy = r.entered_by||''; delete r.entered_by; }
+        if(r.payment_date !== undefined){ r.date = r.payment_date; delete r.payment_date; }
+        delete r.created_at;
         return r;
       }); S.set('payments',st.payments); }
       if(settings){
@@ -3303,7 +3305,9 @@ function rModals(){
                   toast('Testing…');
                   const testId=uuidv4();
                   try{
-                    await sbUpsert('payments',[{id:testId,user_id:USER_ID,customer_id:0,amount:0.01,date:tod(),note:'__sync_test__',entered_by:'test'}]);
+                    const testCustId = (st.customers[0]&&st.customers[0].id) || null;
+                    if(!testCustId){ toast('⚠ Need at least one customer saved before this test can run.'); return; }
+                    await sbUpsert('payments',[{id:testId,user_id:USER_ID,customer_id:testCustId,amount:0.01,payment_date:tod(),note:'__sync_test__',entered_by:'test'}]);
                     const back=await sbSelect('payments');
                     const found=(back||[]).find(r=>r.id===testId);
                     if(found){

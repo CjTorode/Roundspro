@@ -4138,22 +4138,9 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
             const clean = text.replace(/```json|```/g,'').trim();
             const parsed = JSON.parse(clean);
 
-            // ── DATE SANITY CHECK ─────────────────────────────────────
-            // Correct 'sun' misread of 'Mon' when week starts on Monday
-            if(parsed.date === 'sun' && parsed.papers && parsed.papers.length > 0){
-              const hasSunData = parsed.papers.some(p => p.sun_del != null);
-              if(hasSunData){
-                const wkStart = wk.weekStart ? new Date(wk.weekStart) : null;
-                if(wkStart && wkStart.getDay() === 1){
-                  console.log('Date correction: remapping sun→mon');
-                  parsed.date = 'mon';
-                  parsed.papers.forEach(p => {
-                    p.mon_del = p.sun_del; p.mon_ret = p.sun_ret;
-                    p.sun_del = null; p.sun_ret = null;
-                  });
-                }
-              }
-            }
+            // (Removed: a legacy 'sun'→'mon' remap used to force-correct a misread, but since
+            // every week always starts on Monday, it was firing on every genuine Sunday scan
+            // and overwriting Monday's totals instead. Trust the AI's date read directly.)
 
             // Fuzzy title match — strips punctuation/spaces for comparison
             function fuzzyMatch(a, b){

@@ -1453,7 +1453,7 @@ function showBillModal(cid){st.showBillModal=cid;render();}
 
 function printSheet(rid){
   const r=st.rounds.find(x=>x.id===rid);if(!r)return;
-  const custs=st.customers.filter(c=>c.roundId===rid).sort((a,b)=>a.roundOrder-b.roundOrder);
+  const custs=st.customers.filter(c=>c.roundId===rid).sort((a,b)=>(a.listOrder||0)-(b.listOrder||0));
   const biz=st.bizDetails;
   const td=new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
   const rows=custs.map((c,i)=>`<tr><td class="num">${i+1}</td><td><strong>${c.name}</strong><br/><span class="addr">${c.address}</span>${c.deliveryNote?`<br/><span class="note">📌 ${c.deliveryNote}</span>`:''}</td><td>${c.papers.map(p=>`<span class="tag">${p}</span>`).join(' ')}${extrasOnDate(c,tod()).map(t=>`<span class="tag" style="background:#2a5e2a;color:#fff">➕ ${t}</span>`).join(' ')}</td><td class="tick">☐</td></tr>`).join('');
@@ -1686,37 +1686,28 @@ function rCustomers(){
   if(needsOrder){st.customers=st.customers.map((c,i)=>c.listOrder!==undefined?c:{...c,listOrder:i});ps('customers');}
 
   function moveCustomer(id,dir){
-    // Which field actually drives the ON-SCREEN order depends on whether we're
-    // filtered to a specific round (roundOrder) or viewing everyone (listOrder).
-    // The arrows must move whichever field is actually being displayed, or the
-    // customer will appear to move then snap back next render/sync — since the
-    // untouched field is what's really being sorted on.
+    // listOrder is the single field that drives order everywhere — the customer
+    // list (filtered or not), the Rounds tab, and the print run — so arrows always
+    // move the field that's actually displayed and actually printed.
     const roundFiltered=st.customerRoundFilter!=='all';
-    const field=roundFiltered?'roundOrder':'listOrder';
     const pool=roundFiltered
       ? st.customers.filter(c=>c.roundId===st.customerRoundFilter)
       : st.customers;
-    const sorted=[...pool].sort((a,b)=>(a[field]||0)-(b[field]||0));
+    const sorted=[...pool].sort((a,b)=>(a.listOrder||0)-(b.listOrder||0));
     const idx=sorted.findIndex(c=>c.id===id);
     const swapIdx=dir==='up'?idx-1:idx+1;
     if(swapIdx<0||swapIdx>=sorted.length)return;
     const a=sorted[idx],b=sorted[swapIdx];
     st.customers=st.customers.map(c=>{
-      if(c.id===a.id)return{...c,[field]:b[field]};
-      if(c.id===b.id)return{...c,[field]:a[field]};
+      if(c.id===a.id)return{...c,listOrder:b.listOrder};
+      if(c.id===b.id)return{...c,listOrder:a.listOrder};
       return c;
     });
     ps('customers');render();
   }
 
   const visibleCustomers=isDriver()?st.customers.filter(c=>c.roundId==='round-2'):st.customers;
-  const sorted=[...visibleCustomers].sort((a,b)=>{
-    // When filtering by a specific round, sort by roundOrder; otherwise by listOrder
-    if(st.customerRoundFilter!=='all'){
-      return (a.roundOrder||99)-(b.roundOrder||99);
-    }
-    return (a.listOrder||0)-(b.listOrder||0);
-  });
+  const sorted=[...visibleCustomers].sort((a,b)=>(a.listOrder||0)-(b.listOrder||0));
   const fil=sorted.filter(c=>{
     const matchSearch=c.name.toLowerCase().includes(st.search.toLowerCase())||c.address.toLowerCase().includes(st.search.toLowerCase());
     const matchRound=st.customerRoundFilter==='all'||c.roundId===st.customerRoundFilter;
@@ -1830,24 +1821,19 @@ function rRounds(){
       st.selectedRound?h('div',{className:'card'},
         (()=>{
           const r=st.selectedRound;
-          const inR=st.customers.filter(c=>c.roundId===r.id).sort((a,b)=>a.roundOrder-b.roundOrder);
+          const inR=st.customers.filter(c=>c.roundId===r.id).sort((a,b)=>(a.listOrder||0)-(b.listOrder||0));
           const una=st.customers.filter(c=>!c.roundId);
           function mv(cid,dir){
-            // Renumber all customers in round sequentially first to avoid duplicates
-            const renumbered=inR.map((c,i)=>({...c,roundOrder:i+1}));
-            st.customers=st.customers.map(c=>{
-              const r=renumbered.find(x=>x.id===c.id);
-              return r?r:c;
-            });
-            const inR2=st.customers.filter(c=>c.roundId===r.id).sort((a,b)=>a.roundOrder-b.roundOrder);
-            const idx=inR2.findIndex(c=>c.id===cid);
+            // Swap listOrder with the adjacent customer — no renumbering, so this
+            // never collides with the other round's listOrder range.
+            const idx=inR.findIndex(c=>c.id===cid);
             const si=dir==='up'?idx-1:idx+1;
-            if(si<0||si>=inR2.length)return;
-            const a=inR2[idx],b=inR2[si];
-            const aOrder=a.roundOrder, bOrder=b.roundOrder;
+            if(si<0||si>=inR.length)return;
+            const a=inR[idx],b=inR[si];
+            const aOrder=a.listOrder||0, bOrder=b.listOrder||0;
             st.customers=st.customers.map(c=>{
-              if(c.id===a.id)return{...c,roundOrder:bOrder};
-              if(c.id===b.id)return{...c,roundOrder:aOrder};
+              if(c.id===a.id)return{...c,listOrder:bOrder};
+              if(c.id===b.id)return{...c,listOrder:aOrder};
               return c;
             });
             ps('customers');render();
@@ -1878,8 +1864,8 @@ function rRounds(){
             una.length?h('div',{style:{marginTop:'16px',paddingTop:'14px',borderTop:'1px dashed #ccc'}},
               h('div',{style:{fontSize:'12px',color:'#888',marginBottom:'8px',textTransform:'uppercase',letterSpacing:'.5px'}},'Add unassigned customer:'),
               h('div',{style:{display:'flex',flexWrap:'wrap',gap:'6px'}},...una.map(c=>h('button',{className:'btn b3',style:{fontSize:'12px'},onclick:()=>{
-                const mo=Math.max(0,...st.customers.filter(cu=>cu.roundId===r.id).map(cu=>cu.roundOrder));
-                st.customers=st.customers.map(cu=>cu.id===c.id?{...cu,roundId:r.id,roundOrder:mo+1}:cu);ps('customers');render();
+                const mo=Math.max(0,...st.customers.filter(cu=>cu.roundId===r.id).map(cu=>cu.listOrder||0));
+                st.customers=st.customers.map(cu=>cu.id===c.id?{...cu,roundId:r.id,listOrder:mo+1}:cu);ps('customers');render();
               }},'+ '+c.name)))
             ):null
           );
@@ -3909,23 +3895,38 @@ PAPERS (top section):
   
   IMPORTANT — PAPERS MAY BE IN ONE OR TWO COLUMNS:
   
-  SINGLE COLUMN (most common — Mon, Tue, Thu, Fri, Sat, Sun):
-  All papers listed vertically down the left side, with delivery qty next to each title,
-  and a returns column stacked on the right side of the page.
-  
-  TWO COLUMN — ALWAYS USED ON WEDNESDAY:
+  SINGLE COLUMN (most common — any day, including Wednesday):
+  All papers listed vertically down the left side, with delivery qty next to each title.
+  A returns figure MAY or MAY NOT be present — Craig does not always write paper returns
+  on every page. If you see no return number (circled or plain) anywhere in the papers
+  section at all, that means ret=0/null for every paper that day. This is a completely
+  normal, common result — do not treat "no paper returns visible" as a sign you've missed
+  something or need to keep looking.
+
+  TWO COLUMN — SOMETIMES USED ON WEDNESDAY:
   Wednesday is the one day both papers AND magazines need to fit on the same page, so
-  Craig always splits the papers into TWO side-by-side columns to save space. If the page
-  heading reads "Wed", EXPECT this two-column layout from the start rather than defaulting
-  to the single-column reading pattern — don't assume the right-hand column is empty or
-  treat it as overflow. Read every number carefully: with two compact columns the circled
-  return figures sit close together and are easy to misread or skip, so trace each one back
-  to its row exactly as described below rather than reading top-to-bottom as a group.
+  Craig sometimes splits the papers into TWO side-by-side columns to save space. Only
+  read this two-column pattern if you can actually SEE two side-by-side groups of paper
+  titles in the top section of the photo — do not assume it is present just because the
+  heading reads "Wed". If the papers are a single column on this particular page, read
+  them as a single column like any other day.
   Left column has some papers (e.g. Mirror, Mail, Sun, Exp) with their del qtys and returns.
   Right column continues with more papers (e.g. Star, Times, The i, GP) with their del qtys and returns.
   CRITICAL: When you see papers on BOTH the left AND right side of the top section,
   read BOTH columns as papers. Do NOT treat the right column papers as magazines.
   The magazines only start BELOW all the papers, after a clear gap.
+
+  ⚠ HARD BOUNDARY — NEVER BORROW MAGAZINE NUMBERS FOR PAPER RETURNS:
+  A circled or plain return number belongs to a paper ONLY if it sits within the papers
+  section, above the gap, at that paper's own row height. If the papers section (single
+  or two-column) has no return numbers next to it, leave every paper's ret as null/0 —
+  even if there is a Wednesday-style expectation of returns, and even if there are plenty
+  of circled numbers visible further down the page. Circled numbers in the magazines
+  section belong to magazine titles and to nothing else, no matter how tempting it is to
+  fill in a "missing" paper return with the nearest circled number you can find. This has
+  gone wrong before — magazine return circles ending up copied into the paper rows — so
+  treat any paper ret value you're about to output as suspect unless you can point to the
+  exact circle sitting in the papers section itself, above the gap.
   
   GP TOP-UP DELIVERIES:
   Sometimes GP has two numbers added together, e.g. "GP  100+ 41" or "GP 68+20"

@@ -427,16 +427,29 @@ const DB = {
             S.set(row.key,val);
           }catch(e){}
         });
-        // Apply round map to customers (overcomes uuid column limitation)
+        // Apply round map to customers (overcomes uuid column limitation).
+        // Use !=null checks (not ||) so a real, already-set value of 0 is never
+        // silently clobbered back to 0-by-default just because the incoming
+        // map entry was missing a field — that clobbering was the source of
+        // customers repeatedly colliding on listOrder:0 and reorder arrows
+        // going dead/reverting.
         if(roundMap){
           st.customers = st.customers.map(c => {
             const m = roundMap[c.id];
             if(!m) return c;
-            return {...c, roundId: m.roundId||c.roundId||null, roundOrder: m.roundOrder||c.roundOrder||0, listOrder: m.listOrder||c.listOrder||0, extraDeliveries: m.extraDeliveries||c.extraDeliveries||[]};
+            return {...c,
+              roundId: m.roundId!=null?m.roundId:(c.roundId||null),
+              roundOrder: m.roundOrder!=null?m.roundOrder:(c.roundOrder||0),
+              listOrder: m.listOrder!=null?m.listOrder:(c.listOrder!=null?c.listOrder:0),
+              extraDeliveries: m.extraDeliveries||c.extraDeliveries||[]
+            };
           });
         }
-        // Re-apply hardcoded list order after sync
-        applyListOrder();
+        // NOTE: applyListOrder() (hardcoded name-based seed) used to re-run here
+        // on every single sync. It's a one-time migration for brand-new data and
+        // is now only called once at startup (guarded by hasManualList), so it
+        // can no longer stomp on manual reordering mid-session.
+        dedupeListOrder();
         S.set('customers', st.customers);
       }
       // Load shop weeks from Supabase — merge carefully to avoid overwriting local data with blanks
@@ -742,6 +755,42 @@ function applyListOrder(){
       return c;
     });
   }
+}
+
+// Renumbers listOrder to unique sequential values within each round, keeping
+// each round in its own numeric block (so the "All Rounds" view still groups
+// by round) and preserving the existing relative order within a round. This
+// clears out any duplicate/zero listOrder values — which is what causes
+// reorder arrows to silently do nothing (swapping two equal values is a
+// no-op) or a round's order to appear to shuffle on reload. Only writes back
+// and saves if something actually needed to change.
+function dedupeListOrder(){
+  const blockSize=1000;
+  const roundIds=st.rounds.map(r=>r.id);
+  const buckets={};roundIds.forEach(rid=>buckets[rid]=[]);
+  const unassigned=[];
+  st.customers.forEach(c=>{
+    if(roundIds.includes(c.roundId))buckets[c.roundId].push(c);
+    else unassigned.push(c);
+  });
+  const newOrder={};
+  roundIds.forEach((rid,ri)=>{
+    buckets[rid]
+      .slice()
+      .sort((a,b)=>(a.listOrder||0)-(b.listOrder||0))
+      .forEach((c,i)=>{newOrder[c.id]=ri*blockSize+i;});
+  });
+  unassigned
+    .slice()
+    .sort((a,b)=>(a.listOrder||0)-(b.listOrder||0))
+    .forEach((c,i)=>{newOrder[c.id]=roundIds.length*blockSize+i;});
+  let changed=false;
+  st.customers=st.customers.map(c=>{
+    const v=newOrder[c.id];
+    if(v!==c.listOrder){changed=true;return{...c,listOrder:v};}
+    return c;
+  });
+  if(changed){S.set('customers',st.customers);DB.saveCustomers();}
 }
 applyListOrder();
 

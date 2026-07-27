@@ -223,7 +223,7 @@ const S={get:(k,fb)=>{try{const v=localStorage.getItem('cjt_'+k);return v?JSON.p
 const DB = {
   SETTINGS_KEYS: ['gstRate','gstEnabled','gstNumber','defaultDelivery','showCostPrice',
     'calEvents','billingStart','billingPeriod','billingStart2','billingPeriod2','bizDetails','lastWedCharge','billStyle',
-    'shopDiscountPaper','shopDiscountMag','shopEmail','shopEmail2','sendgridKey','noPaperDays'],
+    'shopDiscountPaper','shopDiscountMag','shopEmail','shopEmail2','sendgridKey','noPaperDays','magCheckDismissed'],
 
   async saveCustomers(){
     if(!getSB()) return;
@@ -682,6 +682,7 @@ const st={
   bizDetails:S.get('bizDetails',{name:'C J Torode Newsagent',address:'',phone:'',email:'',paymentInfo:''}),
   lastWedCharge:S.get('lastWedCharge',''),
   billStyle:S.get('billStyle','detailed'),
+  magCheckDismissed:S.get('magCheckDismissed',{}),
   showSettings:false,showAddCustomer:false,showAddStock:false,editStock:null,showDuplicates:false,
   showPayment:null,showBill:null,showHoliday:null,showCloseCycle:false,showChargeMonthly:null,showBillModal:null,showEditCustomer:null,showPaperLog:null,showFinalBill:null,finalBillDate:'',
   showAddRound:false,selectedRound:null,selectedDay:null,
@@ -1089,6 +1090,11 @@ function magazineBugCandidates(){
     if(remainderAbs<0.05) return null; // clean multiple of a cycle — looks normal
     const magMultiple=remainderAbs/weeklyMagCost;
     const looksLikeMagLeftover=Math.abs(magMultiple-Math.round(magMultiple))<0.15&&Math.round(magMultiple)>=1;
+    // Skip if this exact leftover was already reviewed and dismissed — but if
+    // the leftover amount has changed since (balance moved), that's a new
+    // situation worth re-flagging, so it isn't suppressed forever.
+    const dismissedAt=(st.magCheckDismissed||{})[c.id];
+    if(dismissedAt!==undefined&&Math.abs(dismissedAt-remainder)<0.01) return null;
     return {c:c,weeklyMags:weeklyMags,weeklyMagCost:weeklyMagCost,bill:bill,owed:owed,cyclesOwed:cyclesOwed,remainder:remainder,magMultiple:magMultiple,looksLikeMagLeftover:looksLikeMagLeftover};
   }).filter(Boolean).sort(function(a,b){return Math.abs(b.remainder)-Math.abs(a.remainder);});
 }
@@ -2529,8 +2535,13 @@ function rModals(){
                     h('strong',{style:{color:'#a03a1a'}},fmt(Math.abs(cand.remainder)))
                   )
                 ),
-                h('div',{style:{padding:'0 12px 10px'}},
-                  h('button',{className:'btn b3',style:{fontSize:'11px',padding:'6px 10px'},onclick:()=>{st.showMagCheck=false;st.showPayHistory=c.id;render();}},'🧾 Check History')
+                h('div',{style:{padding:'0 12px 10px',display:'flex',gap:'8px'}},
+                  h('button',{className:'btn b3',style:{fontSize:'11px',padding:'6px 10px'},onclick:()=>{st.showMagCheck=false;st.showPayHistory=c.id;render();}},'🧾 Check History'),
+                  h('button',{className:'btn b3',style:{fontSize:'11px',padding:'6px 10px',color:'#888'},onclick:()=>{
+                    if(!confirm('Mark '+c.name+'\'s current leftover ('+fmt(Math.abs(cand.remainder))+') as reviewed?\n\nIt will only reappear if this leftover changes to a different amount later.')) return;
+                    st.magCheckDismissed={...(st.magCheckDismissed||{}),[c.id]:cand.remainder};
+                    ps('magCheckDismissed');render();toast('✓ Dismissed — '+c.name+' won\'t show again for this leftover');
+                  }},'✓ Mark Reviewed')
                 )
               );
             })

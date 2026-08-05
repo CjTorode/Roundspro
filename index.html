@@ -875,7 +875,17 @@ function papersOnDate(c,dateStr){
       return;
     }
     const entries=allEntries.filter(function(e){return e.date<=dateStr;}).sort(function(a,b){return a.date.localeCompare(b.date);});
-    if(entries.length&&entries[entries.length-1].action==='add'){
+    if(!entries.length){
+      // No logged entries fall on or before this date — every entry we have
+      // for this title is in the future. That means the title's real history
+      // predates the log, so fall back to current ticked state — UNLESS the
+      // very first ever entry is a future "add" (meaning it genuinely hadn't
+      // started yet, e.g. a brand new paper being added next week).
+      const first=allEntries.slice().sort(function(a,b){return a.date.localeCompare(b.date);})[0];
+      if(first.action==='remove'&&(c.papers||[]).includes(title))active.add(title);
+      return;
+    }
+    if(entries[entries.length-1].action==='add'){
       active.add(title);
     }
     // If the only entries are dated after dateStr, the title wasn't active yet on dateStr

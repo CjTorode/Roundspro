@@ -4081,7 +4081,47 @@ PAPERS (top section):
     Exp   4   (2)  |  GP     69  (37)
   Then: Mirr del=5 ret=1, Mail del=5 ret=1, Sun del=7 ret=4, Exp del=4 ret=2,
         Star del=6 ret=1, Times del=3 ret=2, The i del=1 ret=0, GP del=69 ret=37
-  
+
+  OFFSET RETURNS COLUMN — STILL PAPER RETURNS, NOT MAGAZINES:
+  Sometimes Craig writes the returns as their own vertical strip of circled numbers
+  set apart from the paper labels/delivery numbers — not tucked right next to each
+  delivery number, but a separate column further to the right (sometimes drifting
+  diagonally down the page), one circle per row, in the same top-to-bottom order as
+  the paper titles above. This is STILL that day's paper returns — never treat it as
+  a magazines section, even though a lone circled number can look like the start of
+  the magazine LAYOUT A pattern.
+
+  How to recognise this pattern (as opposed to an actual magazines section):
+  - No magazine titles (Bella, Woman, Chat, TAB, etc.) appear anywhere near the circles
+    — just plain circled numbers with no title text of their own.
+  - The number of circles matches the number of paper rows above them.
+  - The circles run top-to-bottom in the same order as the paper titles, even though
+    they sit well to the right of the labels and delivery numbers.
+
+  If you see a vertical run of circled numbers like this with NO title text next to
+  any of them, and the count roughly matches the paper rows above: match them 1-to-1
+  top-to-bottom to the papers in reading order (first circle = first paper's return,
+  second circle = second paper's return, and so on) and assign them as that day's
+  paper ret values.
+
+  Example:
+    Mirr   7                ⑥
+    Mail   11                ③
+    Sun    9                  ③
+    Exp    7                   ①
+    Star   10                   ④
+    Times   3                    ③
+    The i   1                     ①
+    GP     109                    ㊻ (46)
+  Then: Mirr del=7 ret=6, Mail del=11 ret=3, Sun del=9 ret=3, Exp del=7 ret=1,
+        Star del=10 ret=4, Times del=3 ret=3, The i del=1 ret=1, GP del=109 ret=46
+
+  Do NOT invent magazine titles to explain a column of circles like this, and do NOT
+  leave the paper ret values as null/unread just because the circles are offset from
+  the delivery numbers rather than sitting right next to them. A missing magazines
+  section on a page like this is normal — return "mags": [] rather than fabricating
+  entries to account for leftover circled numbers.
+
   The page heading shows the day (e.g. "Tues 26 May" = tue, "Wed 27 May" = wed)
   CRITICAL: "Wed" = WEDNESDAY = "wed". It is NOT Thursday. "Mon" = MONDAY = "mon".
   The page number in the top corner (e.g. "15", "16", "17") is NOT the day — ignore it.

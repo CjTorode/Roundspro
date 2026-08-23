@@ -1542,6 +1542,65 @@ td{padding:7px 8px;border-bottom:1px solid #e0d8cc;vertical-align:top;font-size:
   doPrint(html);
 }
 
+// One standing list per round covering the whole week (Mon–Fri / Sat / Sun),
+// so it doesn't need reprinting daily — meant as an emergency cover sheet.
+// Splits each customer's current papers by the weekday(s) stock says they're
+// delivered on, flags currently-active holidays/pauses so a stand-in doesn't
+// misdeliver, and separates weekly (non-daily) and monthly magazines since
+// those don't run Mon–Fri.
+function printWeekSheet(rid){
+  const r=st.rounds.find(x=>x.id===rid);if(!r)return;
+  const custs=st.customers.filter(c=>c.roundId===rid).sort((a,b)=>(a.listOrder||0)-(b.listOrder||0));
+  const biz=st.bizDetails;
+  const today=tod();
+  const dayName=d=>['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d];
+  const stockByTitle={};st.stock.forEach(s=>{stockByTitle[s.title]=s;});
+
+  function classify(c){
+    const wk=[],sat=[],sun=[],other=[];
+    const pausedTitles=new Set((c.paperPauses||[]).filter(p=>p.pauseFrom<=today&&today<p.pauseUntil).map(p=>p.title));
+    (c.papers||[]).forEach(title=>{
+      const s=stockByTitle[title];
+      const paused=pausedTitles.has(title);
+      const label=paused?`<s>${title}</s>`:title;
+      if(!s||s.freq==='monthly'){ other.push(`${label}${paused?'':' (mthly)'}`); return; }
+      if(s.freq==='weekly'){ other.push(`${label} (${(s.deliveryDays||[]).map(dayName).join('/')||'wkly'})`); return; }
+      const dd=s.deliveryDays||[];
+      if(dd.some(d=>d>=1&&d<=5))wk.push(label);
+      if(dd.includes(6))sat.push(label);
+      if(dd.includes(0))sun.push(label);
+    });
+    return {wk,sat,sun,other};
+  }
+
+  const rows=custs.map((c,i)=>{
+    const onHol=onHoliday(c,today);
+    const {wk,sat,sun,other}=classify(c);
+    const tagCol=arr=>arr.length?arr.map(t=>`<span class="tag">${t}</span>`).join(' '):'<span class="none">—</span>';
+    const custCell=`<strong>${c.name}</strong><br/><span class="addr">${c.address}</span>${c.deliveryNote?`<br/><span class="note">📌 ${c.deliveryNote}</span>`:''}${onHol?'<br/><span class="hol">🏖 ON HOLIDAY — check before delivering</span>':''}`;
+    return `<tr><td class="num">${i+1}</td><td>${custCell}</td><td>${tagCol(wk)}</td><td>${tagCol(sat)}</td><td>${tagCol(sun)}</td><td>${tagCol(other)}</td></tr>`;
+  }).join('');
+
+  const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Weekly Delivery List</title>
+<style>@page{size:A4 landscape;margin:12mm}*{box-sizing:border-box}body{font-family:Georgia,serif;font-size:11px;color:#1a1a1a;margin:0}
+h1{font-size:16px;margin:0}h2{font-size:11px;margin:3px 0 0;color:#888;font-weight:normal;letter-spacing:1px}
+.hdr{border-bottom:3px solid #1a1a1a;padding-bottom:8px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:flex-end}
+.date{font-size:10px;color:#888;text-align:right}table{width:100%;border-collapse:collapse;margin-top:6px}
+th{background:#1a1a1a;color:#c8a84b;padding:6px 8px;text-align:left;font-size:9px;letter-spacing:1px;text-transform:uppercase}
+td{padding:7px 8px;border-bottom:1px solid #e0d8cc;vertical-align:top;font-size:10px}
+.num{width:22px;font-weight:bold;color:#c8a84b;font-size:13px}.addr{color:#666;font-size:9px}.note{color:#b94040;font-size:9px}
+.hol{color:#b94040;font-size:9px;font-weight:bold}
+.tag{display:inline-block;background:#e8e0d0;border-radius:2px;padding:1px 5px;margin:1px;font-size:9px}
+.none{color:#bbb;font-size:9px}
+.a1{background:#eef3ff;border:1px solid #5a7ec8;border-radius:4px;padding:8px 10px;font-size:10px;color:#3a5ea8;margin-bottom:10px}
+.ft{margin-top:10px;font-size:9px;color:#aaa;border-top:1px solid #eee;padding-top:6px}</style></head><body>
+<div class="hdr"><div><h1>🗞 ${biz.name||'C J TORODE'} — Weekly Delivery List</h1><h2>${r.name} · ${r.area}</h2></div><div class="date">Printed ${new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})}</div></div>
+<div class="a1">Standing list — same every week unless a customer's order changes. Struck-through titles are on a temporary pause as of the print date. "Other" column = weekly magazines (day shown in brackets) and monthly magazines (ask in shop for delivery day). Re-print after any new customer, cancellation, holiday or pause.</div>
+<table><thead><tr><th>#</th><th>Customer</th><th>Mon–Fri</th><th>Sat</th><th>Sun</th><th>Other (wkly/mthly)</th></tr></thead><tbody>${rows}</tbody></table>
+<div class="ft">Total stops: ${custs.length} · ${biz.name||'C J Torode Newsagent'}${biz.phone?' · '+biz.phone:''}</div></body></html>`;
+  doPrint(html);
+}
+
 function exportICS(){
   const pad=n=>String(n).padStart(2,'0');
   const now=new Date();
@@ -1718,7 +1777,8 @@ function rDash(){
           const n=st.customers.filter(c=>c.roundId===r.id).length;
           return h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'9px 0',borderBottom:'1px solid #e8e0d0'}},
             h('div',{},h('div',{style:{fontWeight:'bold',fontSize:'14px'}},r.name),h('div',{style:{fontSize:'12px',color:'#888'}},r.area+' · '+n+' stop'+(n!==1?'s':''))),
-            btn('b2','🖨 Sheet',()=>printSheet(r.id))
+            btn('b2','🖨 Sheet',()=>printSheet(r.id)),
+            btn('b3','🗓 Week',()=>printWeekSheet(r.id))
           );
         }),
         !st.rounds.length?h('p',{style:{color:'#aaa',fontSize:'13px'}},'No rounds yet'):null
@@ -1866,6 +1926,7 @@ function rRounds(){
       h('h2',{className:'st',style:{marginBottom:'0',flex:'1'}},'Delivery Rounds'),
       h('div',{style:{display:'flex',gap:'8px'}},
         st.selectedRound?btn('b2','🖨 Print Sheet',()=>printSheet(st.selectedRound.id)):null,
+        st.selectedRound?btn('b3','🗓 Weekly List',()=>printWeekSheet(st.selectedRound.id)):null,
         btn('b1','+ Add Round',()=>{st.showAddRound=true;render();})
       )
     ),
@@ -1910,7 +1971,8 @@ function rRounds(){
           return h('div',{},
             h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'14px'}},
               h('div',{},h('div',{style:{fontWeight:'bold',fontSize:'16px'}},r.name),h('div',{style:{fontSize:'13px',color:'#888'}},r.area+' · '+inR.length+' stops')),
-              btn('b2','🖨 Print Sheet',()=>printSheet(r.id))
+              btn('b2','🖨 Print Sheet',()=>printSheet(r.id)),
+              btn('b3','🗓 Weekly List',()=>printWeekSheet(r.id))
             ),
             !inR.length?h('p',{style:{color:'#aaa',fontSize:'13px'}},'No customers on this round yet.'):null,
             ...inR.map((c,i)=>h('div',{style:{display:'flex',alignItems:'center',gap:'10px',padding:'10px 0',borderBottom:'1px solid #e8e0d0'}},

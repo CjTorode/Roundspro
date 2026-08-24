@@ -1264,7 +1264,7 @@ function buildInvoiceHTML(c, suppressBalance, isReprint){
     table+='</tfoot></table>';
     if(bill.holidayDays>0)table+='<div class="hol">&#127958; '+bill.holidayDays+' holiday day'+(bill.holidayDays!==1?'s':'')+' deducted &mdash; '+bill.chargeDays+' days charged</div>';
   }
-  var emailNudge=!(c.email||'').trim()?'<div style="margin-top:10px;padding:12px 14px;border:1px dashed #999;border-radius:3px;font-size:12px;color:#555;"><strong>&#128240; Prefer to receive your invoice by email?</strong><br/>Simply email us at <strong>craigpapers@icloud.com</strong> with your house name and we will switch you to email billing — saving paper and making it easier to keep track.</div>':'';
+  var emailNudge=!(c.email||'').trim()?'<div style="margin-top:14px;padding:14px 16px;background:#fdf6e3;border:2px solid #c8a84b;border-radius:4px;font-size:13px;color:#3a2f1a;text-align:center;"><div style="font-size:14px;font-weight:bold;letter-spacing:.5px;margin-bottom:5px;">&#128231; SWITCH TO EMAIL BILLING</div><div style="font-size:12px;line-height:1.5;">Help keep delivery charges as they are for longer &mdash; email <strong>craigpapers@icloud.com</strong> with your house name and I&rsquo;ll switch you over.</div></div>':'';
   var reprintNote=isReprint?'<div style="margin-top:10px;padding:10px 14px;border:1px dashed #999;border-radius:3px;font-size:11px;color:#777;">This is a reprint of a past cycle — the figure above is for this period only and does not include the account\'s current balance.</div>':'';
   return hdr+table+pb+reprintNote+emailNudge+'<div class="ft">Thank you — '+(biz.name||'C J Torode Newsagent')+'</div>';
 }

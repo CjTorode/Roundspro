@@ -907,9 +907,10 @@ function papersOnDate(c,dateStr){
     // If the only entries are dated after dateStr, the title wasn't active yet on dateStr
   });
   // Apply temporary pauses: {title, pauseFrom, pauseUntil}
-  // A paper is paused on dateStr if pauseFrom <= dateStr < pauseUntil
+  // A paper is paused on dateStr if pauseFrom <= dateStr < pauseUntil.
+  // An empty/missing pauseUntil means an open-ended pause (paused indefinitely).
   (c.paperPauses||[]).forEach(function(p){
-    if(p.pauseFrom<=dateStr&&dateStr<p.pauseUntil){
+    if(p.pauseFrom<=dateStr&&(!p.pauseUntil||dateStr<p.pauseUntil)){
       active.delete(p.title);
     }
   });
@@ -1574,7 +1575,7 @@ function printWeekSheet(rid){
 
   function classify(c){
     const wk=[],sat=[],sun=[],other=[];
-    const pausedTitles=new Set((c.paperPauses||[]).filter(p=>p.pauseFrom<=today&&today<p.pauseUntil).map(p=>p.title));
+    const pausedTitles=new Set((c.paperPauses||[]).filter(p=>p.pauseFrom<=today&&(!p.pauseUntil||today<p.pauseUntil)).map(p=>p.title));
     (c.papers||[]).forEach(title=>{
       const s=stockByTitle[title];
       const paused=pausedTitles.has(title);
@@ -1632,6 +1633,7 @@ function exportICS(){
   });
   // Paper pauses — one VEVENT per actual delivery day only
   (c.paperPauses||[]).forEach(p=>{
+    if(!p.pauseUntil)return; // open-ended pause has no end date to bound the export loop — skip it
     // Find delivery days for this paper title from stock
     const stockItem=st.stock.find(s=>s.title===p.title);
     const delivDays=stockItem&&stockItem.deliveryDays&&stockItem.deliveryDays.length?stockItem.deliveryDays:null;
@@ -3229,17 +3231,17 @@ function rModals(){
           ),
           h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px',marginBottom:'10px'}},
             h('div',{},lbl('Pause from'),h('input',{type:'date',className:'fi',style:{marginBottom:'0'},value:st.pauseFrom||tod(),onchange:e=>st.pauseFrom=e.target.value})),
-            h('div',{},lbl('Resume from'),h('input',{type:'date',className:'fi',style:{marginBottom:'0'},value:st.pauseUntil||'',onchange:e=>st.pauseUntil=e.target.value}))
+            h('div',{},lbl('Resume from (leave blank if unknown)'),h('input',{type:'date',className:'fi',style:{marginBottom:'0'},value:st.pauseUntil||'',onchange:e=>st.pauseUntil=e.target.value}))
           ),
           btn('b2 bf','⏸ Add Pause',()=>{
             if(!st.pauseTitle) st.pauseTitle=(c.papers&&c.papers[0])||'';
-            if(!st.pauseTitle||!st.pauseFrom||!st.pauseUntil){alert('Please select a paper and both dates.');return;}
-            if(st.pauseUntil<=st.pauseFrom){alert('Resume date must be after pause date.');return;}
-            const pause={title:st.pauseTitle,pauseFrom:st.pauseFrom,pauseUntil:st.pauseUntil};
+            if(!st.pauseTitle||!st.pauseFrom){alert('Please select a paper and a pause-from date.');return;}
+            if(st.pauseUntil&&st.pauseUntil<=st.pauseFrom){alert('Resume date must be after pause date.');return;}
+            const pause={title:st.pauseTitle,pauseFrom:st.pauseFrom,pauseUntil:st.pauseUntil||null};
             const newPauses=[...(c.paperPauses||[]),pause];
             st.customers=st.customers.map(cu=>cu.id===c.id?{...cu,paperPauses:newPauses}:cu);
             st.pauseFrom='';st.pauseUntil='';
-            ps('customers');render();toast('⏸ '+st.pauseTitle+' paused from '+fds(pause.pauseFrom)+' — resumes '+fds(pause.pauseUntil));
+            ps('customers');render();toast('⏸ '+st.pauseTitle+' paused from '+fds(pause.pauseFrom)+(pause.pauseUntil?' — resumes '+fds(pause.pauseUntil):' — until resumed manually'));
           })
         ),
         // Active pauses list
@@ -3249,7 +3251,7 @@ function rModals(){
             h('div',{},
               h('span',{style:{fontSize:'16px',marginRight:'8px'}},'⏸'),
               h('span',{style:{fontWeight:'bold',fontSize:'13px'}},p.title),
-              h('span',{style:{color:'#888',fontSize:'12px',marginLeft:'8px'}},fds(p.pauseFrom)+' → '+fds(p.pauseUntil))
+              h('span',{style:{color:'#888',fontSize:'12px',marginLeft:'8px'}},fds(p.pauseFrom)+' → '+(p.pauseUntil?fds(p.pauseUntil):'until resumed'))
             ),
             h('button',{style:{background:'none',border:'none',color:'#b94040',cursor:'pointer',fontSize:'14px'},onclick:()=>{
               const newPauses=(c.paperPauses||[]).filter((_,j)=>j!==i);

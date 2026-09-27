@@ -251,7 +251,7 @@ const DB = {
       await sbUpsert('customers', rows);
       // Also persist roundId/listOrder/roundOrder as a settings entry (since round_id col is uuid type)
       const roundMap = {};
-      st.customers.forEach(c => { roundMap[c.id] = {roundId:c.roundId||null, roundOrder:c.roundOrder||0, listOrder:c.listOrder||0, extraDeliveries:c.extraDeliveries||[]}; });
+      st.customers.forEach(c => { roundMap[c.id] = {roundId:c.roundId||null, roundOrder:c.roundOrder||0, listOrder:c.listOrder||0, extraDeliveries:c.extraDeliveries||[], startDate:c.startDate||''}; });
       await sbUpsert('settings', [{user_id:USER_ID, key:'customerRoundMap', value:JSON.stringify(roundMap)}]);
     } catch(e){ console.warn('saveCustomers:', e.message); toast('⚠ Customer sync failed: ' + e.message); }
     S.set('customers', st.customers);
@@ -442,7 +442,8 @@ const DB = {
               roundId: m.roundId!=null?m.roundId:(c.roundId||null),
               roundOrder: m.roundOrder!=null?m.roundOrder:(c.roundOrder||0),
               listOrder: m.listOrder!=null?m.listOrder:(c.listOrder!=null?c.listOrder:0),
-              extraDeliveries: m.extraDeliveries||c.extraDeliveries||[]
+              extraDeliveries: m.extraDeliveries||c.extraDeliveries||[],
+              startDate: m.startDate!=null?m.startDate:(c.startDate||'')
             };
           });
         }
@@ -882,6 +883,7 @@ function extrasOnDate(c,dateStr){
 function paperSyncCandidates(){
   const today=tod();
   return st.customers.map(function(c){
+    if(c.startDate&&c.startDate>today) return null; // not started yet
     const raw=[...(c.papers||[])].sort();
     const correct=papersOnDate(c,today).sort();
     const same=raw.length===correct.length&&raw.every(function(t,i){return t===correct[i];});
@@ -890,6 +892,8 @@ function paperSyncCandidates(){
 }
 
 function papersOnDate(c,dateStr){
+  // Nothing is delivered (or charged) before the customer's start date
+  if(c.startDate&&dateStr<c.startDate) return [];
   const log=c.paperLog||[];
   const titles=new Set([...(c.papers||[]), ...log.map(function(e){return e.title;})]);
   const active=new Set();
@@ -1051,7 +1055,11 @@ function calcBill(c,start,days,skipMonthly){
 
   const pt=lines.reduce(function(s,l){return s+l.lineTotal;},0);
   var chargeableWeeks=0;
-  if(start){for(var wi=0;wi<Math.round(days/7);wi++){var wStart=new Date(start);wStart.setDate(wStart.getDate()+wi*7);var allHol=true;for(var wd=0;wd<7;wd++){var wDay=new Date(wStart);wDay.setDate(wDay.getDate()+wd);var wDs=wDay.toISOString().split('T')[0];if(!onHoliday(c,wDs)){allHol=false;break;}}if(!allHol)chargeableWeeks++;}}else{chargeableWeeks=Math.round(days/7);}
+  // A week only carries a delivery charge if something was actually due to be
+  // delivered in it: at least one day that isn't a holiday AND has a paper
+  // active (so a new customer who starts part-way through a cycle, or a fully
+  // paused week, isn't charged delivery for weeks before/while nothing arrived).
+  if(start){for(var wi=0;wi<Math.round(days/7);wi++){var wStart=new Date(start);wStart.setDate(wStart.getDate()+wi*7);var hasDelivery=false;for(var wd=0;wd<7;wd++){var wDay=new Date(wStart);wDay.setDate(wDay.getDate()+wd);var wDs=wDay.toISOString().split('T')[0];if(!onHoliday(c,wDs)&&(papersOnDate(c,wDs).length||extrasOnDate(c,wDs).length)){hasDelivery=true;break;}}if(hasDelivery)chargeableWeeks++;}}else{chargeableWeeks=Math.round(days/7);}
   const weeks=Math.round(days/7); const dt=c.deliveryCharge*chargeableWeeks; // deduct full holiday weeks
   const dg=!c.gstExempt?dt*(gst/100):0;
 

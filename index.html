@@ -223,7 +223,8 @@ const S={get:(k,fb)=>{try{const v=localStorage.getItem('cjt_'+k);return v?JSON.p
 const DB = {
   SETTINGS_KEYS: ['gstRate','gstEnabled','gstNumber','defaultDelivery','showCostPrice',
     'calEvents','billingStart','billingPeriod','billingStart2','billingPeriod2','bizDetails','lastWedCharge','billStyle',
-    'shopDiscountPaper','shopDiscountMag','shopEmail','shopEmail2','sendgridKey','noPaperDays','magCheckDismissed'],
+    'shopDiscountPaper','shopDiscountMag','shopEmail','shopEmail2','sendgridKey','noPaperDays','magCheckDismissed',
+    'driverPrinterEmail','printRouteR1','printRouteR2'],
 
   async saveCustomers(){
     if(!getSB()) return;
@@ -714,6 +715,15 @@ const st={
   showNoPaperModal: false,
   newNoPaperDate: new Date().toISOString().split('T')[0],
   newNoPaperGpOnly: true,
+  // ── INVOICE SNAPSHOTS & DRIVER'S PRINTER ─────────────────────────
+  driverPrinterEmail: S.get('driverPrinterEmail', ''),
+  printRouteR1: S.get('printRouteR1', 'home'),   // 'home' | 'driver'
+  printRouteR2: S.get('printRouteR2', 'driver'), // 'home' | 'driver'
+  postClose: null,            // set after a cycle closes → shows the "send printed invoices" step
+  showInvoiceHistory: null,   // customer id whose saved invoices are being viewed
+  invHistRows: null,          // loaded rows for that customer
+  savedRuns: null,            // billing tab: list of saved closed cycles (loaded on demand)
+  shopSent: null,             // shop tab: list of sent shop invoices (loaded on demand)
 };
 
 // ── HARDCODED LIST ORDER (set May 2026) ──────────────────────────
@@ -1126,22 +1136,202 @@ function magazineBugCandidates(){
   }).filter(Boolean).sort(function(a,b){return Math.abs(b.remainder)-Math.abs(a.remainder);});
 }
 
-function closeCycle(startKey, periodKey){
-  // startKey: 'billingStart' or 'billingStart2'
-  // Only charge customers whose billing start matches
-  const ce=new Date(st[startKey]);ce.setDate(ce.getDate()+27);
-  const ns=new Date(ce);ns.setDate(ns.getDate()+1);
+// ── INVOICE SNAPSHOTS ────────────────────────────────────────────
+// Every invoice is saved to the Supabase `invoices` table at the moment a
+// cycle closes (and when a shop invoice is emailed). Reprints then use the
+// saved copy — never a recalculation — so they always match what was sent.
+function roundKeyForStart(startKey){ return startKey==='billingStart2'?'round-2':'round-1'; }
+function roundLabel(roundKey){ return roundKey==='round-2'?'Round 2':'Round 1'; }
+function inRound(c, roundKey){ return roundKey==='round-2'?c.roundId==='round-2':c.roundId!=='round-2'; }
+function printRouteFor(roundKey){ return roundKey==='round-2'?(st.printRouteR2||'driver'):(st.printRouteR1||'home'); }
+
+function buildInvoiceSnapshot(c, roundKey, periodStart, periodLabel){
+  const bill=calcBill(c,periodStart,28);
+  const outstanding=c.balance<0?Math.abs(c.balance):0;
+  const credit=c.balance>0?c.balance:0;
+  const r2=v=>parseFloat((v||0).toFixed(2));
+  return {
+    id: 'inv_'+c.id+'_'+periodStart,
+    user_id: USER_ID,
+    kind: 'round',
+    round_key: roundKey,
+    customer_id: String(c.id),
+    customer_name: c.name||'',
+    customer_address: c.address||'',
+    customer_email: (c.email||'').trim(),
+    period_start: periodStart,
+    period_label: periodLabel,
+    cycle_total: r2(bill.grandTotal),
+    previous_outstanding: r2(outstanding),
+    credit_applied: r2(credit),
+    total_to_pay: r2(Math.max(0,bill.grandTotal+outstanding-credit)),
+    delivery: (c.email||'').trim()?'email':'print',
+    invoice_html: buildInvoiceHTML(c),
+    email_html: buildHTMLEmail(c),
+    email_text: buildPlainTextBill(c),
+    created_at: new Date().toISOString()
+  };
+}
+
+async function saveInvoiceSnapshots(rows){
+  if(!getSB()) throw new Error('Not connected to Supabase — invoices can\'t be saved while offline.');
+  // Save in batches so a big round doesn't make one huge request
+  for(let i=0;i<rows.length;i+=20){ await sbUpsert('invoices', rows.slice(i,i+20)); }
+}
+
+async function loadInvoices(params){
+  return await sbFetch('GET','invoices',null,'user_id=eq.'+USER_ID+'&'+params);
+}
+
+function closeCycle(startKey, periodKey){ return closeCycleWithSnapshots(startKey, periodKey); }
+
+async function closeCycleWithSnapshots(startKey, periodKey){
+  if(closeCycleWithSnapshots._busy) return;
+  const roundKey=roundKeyForStart(startKey);
+  const periodStart=st[startKey];
+  const pe=new Date(periodStart);pe.setDate(pe.getDate()+27);
+  const periodLabel=st[periodKey]||(fds(periodStart)+' – '+fds(pe.toISOString().split('T')[0]));
+  // Only this round's customers (not cancelled), in delivery order
+  const custs=st.customers.filter(c=>!c.cancelled&&inRound(c,roundKey)).sort((a,b)=>(a.listOrder||0)-(b.listOrder||0));
+  if(!custs.length){alert('No active customers on '+roundLabel(roundKey)+'.');return;}
+  if(!confirm('Close '+roundLabel(roundKey)+' — '+periodLabel+'?\n\n'
+    +custs.length+' invoices will be saved to invoice history, then each account is charged and the next period starts.\n\nThis cannot be undone.')) return;
+  closeCycleWithSnapshots._busy=true;
+  toast('💾 Saving '+custs.length+' invoices…');
+  let snaps;
+  try{
+    snaps=custs.map(c=>buildInvoiceSnapshot(c,roundKey,periodStart,periodLabel));
+    await saveInvoiceSnapshots(snaps);
+  }catch(e){
+    closeCycleWithSnapshots._busy=false;
+    alert('⚠ Couldn\'t save the invoices — the cycle has NOT been closed.\n\n'+e.message+'\n\nCheck your connection and try again.');
+    return;
+  }
+  // Snapshots are safe — now charge the accounts and roll the period
+  const ids=new Set(custs.map(c=>c.id));
+  const ns=new Date(pe);ns.setDate(ns.getDate()+1);
   const ne=new Date(ns);ne.setDate(ne.getDate()+27);
   st.customers=st.customers.map(c=>{
-    // Only charge this customer if their billing start matches the cycle being closed
-    if(getBillingStart(c)!==st[startKey]) return c;
-    if(c.cancelled) return c; // already billed a final bill and account closed
-    const b=calcBill(c,st[startKey],28);
+    if(!ids.has(c.id)) return c;
+    const b=calcBill(c,periodStart,28);
     return{...c,balance:parseFloat((c.balance-b.grandTotal).toFixed(2))};
   });
   st[startKey]=ns.toISOString().split('T')[0];
   st[periodKey]=fds(st[startKey])+' – '+fds(ne.toISOString().split('T')[0]);
-  st.showCloseCycle=false;pa();render();toast('✓ Cycle closed — next period started');
+  st.showCloseCycle=false;
+  closeCycleWithSnapshots._busy=false;
+  st.postClose={roundKey,periodLabel,count:snaps.length,printSnaps:snaps.filter(s=>s.delivery==='print'),status:''};
+  pa();render();toast('✓ '+roundLabel(roundKey)+' closed — '+snaps.length+' invoices saved');
+}
+
+// Print saved invoices on this device (AirPrint / Save as PDF)
+function printSnapshots(snaps, copyNote){
+  if(!snaps.length){alert('Nothing to print.');return;}
+  const pages=snaps.map((s,i)=>s.invoice_html
+    +(copyNote?'<div style="margin-top:8px;font-size:10px;color:#999;text-align:center">Copy of invoice issued '+fd(s.created_at||s.period_start)+'</div>':'')
+    +(i<snaps.length-1?'<div style="page-break-after:always"></div>':''));
+  doPrint('<!DOCTYPE html><html><head><meta charset="utf-8"><style>'+getInvoiceCSS()+'</style></head><body>'+pages.join('')+'</body></html>');
+}
+
+// ── DRIVER'S PRINTER (email-to-print) ────────────────────────────
+function loadScriptOnce(src){
+  loadScriptOnce._p=loadScriptOnce._p||{};
+  if(!loadScriptOnce._p[src]) loadScriptOnce._p[src]=new Promise((res,rej)=>{
+    const sc=document.createElement('script');sc.src=src;sc.onload=res;
+    sc.onerror=()=>{delete loadScriptOnce._p[src];rej(new Error('Couldn\'t load PDF tools — check your connection.'));};
+    document.head.appendChild(sc);
+  });
+  return loadScriptOnce._p[src];
+}
+async function loadPdfLibs(){
+  await loadScriptOnce('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
+  await loadScriptOnce('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+}
+// The invoice CSS styles bare tags (body, h1, table…) — scope it so rendering
+// invoices off-screen doesn't restyle the app itself.
+function getScopedInvoiceCSS(){
+  let css=getInvoiceCSS().replace(/@media print\{.*\}\}/,'').replace(/@page\{[^}]*\}/g,'');
+  return css.replace(/([^{}]+)\{([^{}]*)\}/g,(m,sel,body)=>{
+    const scoped=sel.split(',').map(x=>{x=x.trim();
+      if(x==='body'||x==='html') return '.rpinv';
+      if(x==='*') return '.rpinv,.rpinv *';
+      return '.rpinv '+x;}).join(',');
+    return scoped+'{'+body+'}';
+  })+'.rpinv{background:#fff;width:469px;padding:0;color:#1a1a1a}'
+    // the app has its own .hdr (black bar) — cancel it inside invoices
+    +'.rpinv .hdr{background:transparent;padding-left:0;padding-right:0;height:auto}';
+}
+// One invoice per A5 page, like the normal print. Returns base64 PDF.
+async function snapshotsToPdfBase64(snaps){
+  await loadPdfLibs();
+  const {jsPDF}=window.jspdf;
+  const pdf=new jsPDF({unit:'mm',format:'a5',orientation:'portrait',compress:true});
+  const host=document.createElement('div');
+  host.style.cssText='position:fixed;left:-10000px;top:0;z-index:-1';
+  host.innerHTML='<style>'+getScopedInvoiceCSS()+'</style><div class="rpinv"></div>';
+  document.body.appendChild(host);
+  const inv=host.querySelector('.rpinv');
+  try{
+    const maxW=124, maxH=186; // A5 (148×210mm) less 12mm margins
+    for(let i=0;i<snaps.length;i++){
+      inv.innerHTML=snaps[i].invoice_html;
+      const canvas=await window.html2canvas(inv,{scale:2,backgroundColor:'#ffffff',logging:false});
+      let w=maxW, hgt=canvas.height*maxW/canvas.width;
+      if(hgt>maxH){ w=w*maxH/hgt; hgt=maxH; }
+      if(i>0) pdf.addPage();
+      pdf.addImage(canvas.toDataURL('image/jpeg',0.85),'JPEG',12,12,w,hgt);
+    }
+  } finally { host.remove(); }
+  return pdf.output('datauristring').split(',')[1];
+}
+// Sends in batches of 10 invoices per email to keep each attachment small.
+async function sendSnapshotsToDriverPrinter(snaps, label, onProgress){
+  const to=(st.driverPrinterEmail||'').trim();
+  if(!to) throw new Error('No driver\'s printer email set — add it in ⚙ Settings.');
+  if(!snaps.length) throw new Error('Nothing to send.');
+  const BATCH=10, total=snaps.length;
+  for(let i=0;i<total;i+=BATCH){
+    const chunk=snaps.slice(i,i+BATCH);
+    const range=total>BATCH?' ('+(i+1)+'–'+(i+chunk.length)+' of '+total+')':'';
+    if(onProgress) onProgress('Building PDF'+range+'…');
+    const pdfBase64=await snapshotsToPdfBase64(chunk);
+    if(onProgress) onProgress('Sending to printer'+range+'…');
+    const resp=await fetch('/.netlify/functions/send-to-printer',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({to,subject:label+range,filename:(label+range).replace(/[^\w\-]+/g,'-')+'.pdf',pdfBase64})
+    });
+    const data=await resp.json().catch(()=>({error:'No response ('+resp.status+')'}));
+    if(!resp.ok) throw new Error(data.error||'Send failed ('+resp.status+')');
+  }
+}
+
+// Email a saved invoice to a customer (asks for an address if none on file,
+// then offers to save it and switch them to email billing).
+async function emailSavedInvoice(row){
+  const c=st.customers.find(x=>String(x.id)===String(row.customer_id));
+  let to=((c&&c.email)||row.customer_email||'').trim();
+  let isNew=false;
+  if(!to){
+    to=(prompt('No email on file for '+row.customer_name+'.\n\nEnter their email address to send this invoice:')||'').trim();
+    if(!to) return;
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)){alert('That doesn\'t look like a valid email address.');return;}
+    isNew=true;
+  }
+  const full=row.email_html?row:(await loadInvoices('id=eq.'+encodeURIComponent(row.id)+'&select=*'))[0];
+  if(!full||!full.email_html){alert('Couldn\'t load that invoice.');return;}
+  const biz=st.bizDetails;
+  const resp=await fetch('/.netlify/functions/send-email',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({to,subject:(biz.name||'C J Torode')+' — Invoice '+(full.period_label||'')+' (Copy)',
+      html:full.email_html,text:full.email_text||'',from:'craigpapers@newsagentdelivr.com',fromName:biz.name||'C J Torode Newsagent'})
+  });
+  const data=await resp.json().catch(()=>({error:'No response'}));
+  if(!resp.ok){alert('⚠ Send failed: '+(data.error||resp.status));return;}
+  toast('✓ Invoice emailed to '+to);
+  if(isNew&&c&&confirm('Save '+to+' to '+c.name+' and switch them to email billing?')){
+    st.customers=st.customers.map(x=>x.id===c.id?{...x,email:to}:x);
+    ps('customers');render();toast('✓ '+c.name+' switched to email billing');
+  }
 }
 
 function doPrint(html){
@@ -1930,6 +2120,7 @@ function rCustomers(){
               btn('b4','🏖 Holiday',()=>{st.showHoliday=c.id;render();}),
               btn('b3','📋 Papers',()=>{st.showPaperLog=c.id;st.paperChangeDate=tod();st.paperChangeTitle=(st.stock[0]&&st.stock[0].title)||'';st.paperChangeAction='add';render();}),
               btn('b3','🧾 History',()=>{st.showPayHistory=c.id;render();}),
+              btn('b3','🗂 Invoices',()=>{st.showInvoiceHistory=c.id;st.invHistRows=null;render();}),
               !c.cancelled?btn('b6',{style:{background:'#7a3030',color:'#fff'}},'🚪 Final Bill',()=>{st.showFinalBill=c.id;st.finalBillDate=tod();render();}):null,
               btn('b6','🗑',async()=>{if(confirm('Delete '+c.name+'?\n\nThis cannot be undone.')){const delId=c.id;const delName=c.name;const backup=st.customers;st.customers=st.customers.filter(x=>x.id!==c.id);S.set('customers',st.customers);render();toast('Deleting '+delName+'…');try{await DB.deleteCustomer(delId);toast('✓ '+delName+' deleted');}catch(e){st.customers=backup;S.set('customers',st.customers);render();toast('⚠ Delete failed — check your connection and try again');}}})
             )
@@ -2219,6 +2410,52 @@ function rBilling(){
         h('div',{style:{fontSize:'12px',color:st.gstEnabled?'#5a3e8e':'#aaa',paddingBottom:'2px'}},st.gstEnabled?'✓ GST '+st.gstRate+'% active':'GST off')
       )
     ),
+    // ── SAVED INVOICE RUNS (closed cycles) ──
+    (()=>{
+      const runs=st.savedRuns;
+      const load=()=>{
+        st.savedRuns='loading';render();
+        loadInvoices('kind=eq.round&select=id,round_key,period_start,period_label,delivery,customer_id&order=period_start.desc&limit=1000')
+          .then(rows=>{
+            const map={};
+            (rows||[]).forEach(r=>{
+              if(isDriver()&&r.round_key!=='round-2')return;
+              const k=r.round_key+'|'+r.period_start;
+              if(!map[k])map[k]={round_key:r.round_key,period_start:r.period_start,period_label:r.period_label,total:0,print:0};
+              map[k].total++; if(r.delivery==='print')map[k].print++;
+            });
+            st.savedRuns=Object.values(map).sort((a,b)=>b.period_start.localeCompare(a.period_start)).slice(0,12);render();
+          })
+          .catch(e=>{st.savedRuns={error:e.message};render();});
+      };
+      const getPrintSnaps=async(run)=>{
+        const rows=await loadInvoices('kind=eq.round&round_key=eq.'+run.round_key+'&period_start=eq.'+run.period_start+'&delivery=eq.print&select=*');
+        const order={};st.customers.forEach(c=>{order[String(c.id)]=c.listOrder||0;});
+        return (rows||[]).sort((a,b)=>(order[a.customer_id]||0)-(order[b.customer_id]||0));
+      };
+      return h('div',{className:'card',style:{marginBottom:'18px'}},
+        h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:'8px',flexWrap:'wrap'}},
+          h('div',{className:'ct',style:{margin:'0'}},'🗂 Saved Invoice Runs'),
+          btn('b3',{style:{fontSize:'12px'}},runs&&runs!=='loading'?'↻ Refresh':'Show',load)
+        ),
+        runs==null?h('div',{style:{fontSize:'12px',color:'#888',marginTop:'6px'}},'Every closed cycle is saved here. Reprint or re-send the printed invoices any time.')
+        :runs==='loading'?h('div',{style:{fontSize:'13px',color:'#888',marginTop:'8px'}},'Loading…')
+        :runs.error?h('div',{className:'a2',style:{marginTop:'8px'}},'⚠ '+runs.error)
+        :!runs.length?h('div',{style:{fontSize:'13px',color:'#aaa',marginTop:'8px'}},'No saved runs yet — the first one appears when you next close a cycle.')
+        :h('div',{style:{marginTop:'8px'}},...runs.map(run=>h('div',{style:{padding:'10px 0',borderBottom:'1px solid #e8e0d0'}},
+            h('div',{style:{fontWeight:'bold',fontSize:'14px'}},roundLabel(run.round_key)+' — '+(run.period_label||fds(run.period_start))),
+            h('div',{style:{fontSize:'12px',color:'#888'}},run.total+' invoices · '+run.print+' printed'),
+            run.print?h('div',{style:{display:'flex',gap:'6px',marginTop:'6px',flexWrap:'wrap'}},
+              btn('b1',{style:{padding:'7px 12px',fontSize:'12px'}},'🖨 Print '+run.print+' here',async()=>{try{printSnapshots(await getPrintSnaps(run),true);}catch(e){alert('⚠ '+e.message);}}),
+              (st.driverPrinterEmail||'').trim()?btn('b4',{style:{padding:'7px 12px',fontSize:'12px'}},'📠 Send to driver',async()=>{
+                if(!confirm('Send '+run.print+' printed invoices for '+roundLabel(run.round_key)+' ('+(run.period_label||'')+') to the driver\'s printer?'))return;
+                try{const snaps=await getPrintSnaps(run);await sendSnapshotsToDriverPrinter(snaps,roundLabel(run.round_key)+' invoices '+(run.period_label||''),m=>toast('📠 '+m));toast('✓ Sent to driver\'s printer');}
+                catch(e){alert('⚠ '+e.message);}
+              }):null
+            ):null
+          )))
+      );
+    })(),
     h('div',{className:'g2',style:{marginBottom:'20px'}},
       h('div',{className:'card'},
         h('div',{className:'ct'},'🧾 Customer Bills — 28 Days'),
@@ -2931,6 +3168,79 @@ function rModals(){
     ),()=>{st.showHoliday=null;render();}));
   }
 
+  // ── AFTER A CYCLE CLOSES: send the printed invoices ──
+  if(st.postClose){
+    const pc=st.postClose;
+    const route=printRouteFor(pc.roundKey);
+    const hasPrinter=!!(st.driverPrinterEmail||'').trim();
+    const n=pc.printSnaps.length;
+    const closePC=()=>{if(pc.busy)return;st.postClose=null;render();};
+    const sendDriver=async()=>{
+      if(pc.busy)return;
+      pc.busy=true;pc.status='Starting…';render();
+      try{
+        await sendSnapshotsToDriverPrinter(pc.printSnaps, roundLabel(pc.roundKey)+' invoices '+pc.periodLabel, msg=>{pc.status=msg;render();});
+        pc.busy=false;pc.status='✓ Sent '+n+' invoice'+(n!==1?'s':'')+' to the driver\'s printer';pc.sent=true;render();
+        toast('✓ Invoices sent to driver\'s printer');
+      }catch(e){pc.busy=false;pc.status='⚠ '+e.message;render();}
+    };
+    const bigStyle={padding:'14px',fontSize:'15px',width:'100%',marginBottom:'8px'};
+    ms.push(mod('✓ '+roundLabel(pc.roundKey)+' Closed',h('div',{},
+      h('div',{className:'a4',style:{marginBottom:'14px'}},'💾 '+pc.count+' invoices saved to history for '+pc.periodLabel+'.'),
+      n===0
+        ? h('div',{style:{fontSize:'14px',color:'#555',marginBottom:'14px'}},'Everyone on this round gets their invoice by email — nothing to print.')
+        : h('div',{},
+            h('div',{style:{fontSize:'14px',marginBottom:'12px'}},h('strong',{},n+' invoice'+(n!==1?'s':'')),' need printing (customers without email).'),
+            !hasPrinter?h('div',{className:'a2',style:{marginBottom:'10px'}},'No driver\'s printer email set yet — add it in ⚙ Settings to send from here.'):null,
+            pc.status?h('div',{className:pc.status.startsWith('⚠')?'a2':(pc.sent?'a4':'a1'),style:{marginBottom:'10px'}},pc.status):null,
+            route==='driver'
+              ? [btn('b4',{style:{...bigStyle,opacity:(pc.busy||!hasPrinter)?.5:1}},pc.sent?'📠 Send to driver\'s printer again':'📠 Send to driver\'s printer',sendDriver),
+                 btn('b3',{style:{...bigStyle,fontSize:'13px'}},'🖨 Print here instead',()=>printSnapshots(pc.printSnaps))]
+              : [btn('b1',{style:bigStyle},'🖨 Print here',()=>printSnapshots(pc.printSnaps)),
+                 btn('b3',{style:{...bigStyle,fontSize:'13px',opacity:(pc.busy||!hasPrinter)?.5:1}},'📠 Send to driver\'s printer (away)',sendDriver)]
+          ),
+      btn('b3',{style:{width:'100%',padding:'10px',opacity:pc.busy?.5:1}},pc.busy?'Working…':'Done',closePC)
+    ),closePC));
+  }
+
+  // ── PER-CUSTOMER SAVED INVOICES ──
+  if(st.showInvoiceHistory){
+    const cid=st.showInvoiceHistory;
+    const c=st.customers.find(x=>String(x.id)===String(cid));
+    const closeIH=()=>{st.showInvoiceHistory=null;st.invHistRows=null;render();};
+    if(st.invHistRows===null){
+      st.invHistRows='loading';
+      loadInvoices('customer_id=eq.'+encodeURIComponent(String(cid))+'&select=id,customer_id,customer_name,customer_email,period_start,period_label,cycle_total,total_to_pay,delivery,round_key,created_at&order=period_start.desc&limit=200')
+        .then(r=>{if(st.showInvoiceHistory===cid){st.invHistRows=r||[];render();}})
+        .catch(e=>{if(st.showInvoiceHistory===cid){st.invHistRows={error:e.message};render();}});
+    }
+    const rows=st.invHistRows;
+    const getFull=async(row)=>{const r=await loadInvoices('id=eq.'+encodeURIComponent(row.id)+'&select=*');if(!r||!r[0])throw new Error('Invoice not found');return r[0];};
+    ms.push(mod('🗂 Saved Invoices — '+(c?c.name:''),h('div',{},
+      h('div',{style:{fontSize:'13px',color:'#555',marginBottom:'12px'}},'Exact copies of each invoice as it was issued, saved when the cycle closed.'),
+      rows==='loading'||rows===null?h('div',{style:{color:'#888',fontSize:'13px'}},'Loading…')
+      :rows.error?h('div',{className:'a2'},'⚠ Couldn\'t load invoices: '+rows.error+(/invoices/.test(rows.error)?' — has the invoices table been created in Supabase?':''))
+      :!rows.length?h('div',{style:{color:'#aaa',fontSize:'13px'}},'No saved invoices yet — they start from the first cycle closed with this version of the app.')
+      :h('div',{},...rows.map(r=>h('div',{style:{padding:'10px 0',borderBottom:'1px solid #e8e0d0'}},
+          h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:'8px'}},
+            h('div',{},h('div',{style:{fontWeight:'bold',fontSize:'14px'}},r.period_label||fds(r.period_start)),
+              h('div',{style:{fontSize:'11px',color:'#888'}},(r.delivery==='email'?'📧 Emailed':'🖨 Printed')+' · issued '+fd(r.created_at))),
+            h('div',{style:{textAlign:'right'}},h('div',{style:{fontWeight:'bold'}},fmt(r.total_to_pay)),h('div',{style:{fontSize:'11px',color:'#888'}},'cycle '+fmt(r.cycle_total)))
+          ),
+          h('div',{style:{display:'flex',gap:'6px',marginTop:'8px',flexWrap:'wrap'}},
+            btn('b1',{style:{padding:'8px 12px',fontSize:'13px'}},'🖨 Reprint',async()=>{try{printSnapshots([await getFull(r)],true);}catch(e){alert('⚠ '+e.message);}}),
+            btn('b4',{style:{padding:'8px 12px',fontSize:'13px'}},'📧 Email',async()=>{try{await emailSavedInvoice(r);}catch(e){alert('⚠ '+e.message);}}),
+            (st.driverPrinterEmail||'').trim()?btn('b3',{style:{padding:'8px 12px',fontSize:'13px'}},'📠 Driver',async()=>{
+              if(!confirm('Send this invoice to the driver\'s printer?'))return;
+              toast('📠 Sending…');
+              try{await sendSnapshotsToDriverPrinter([await getFull(r)],'Invoice copy '+r.customer_name+' '+(r.period_label||''));toast('✓ Sent to driver\'s printer');}
+              catch(e){alert('⚠ '+e.message);}
+            }):null
+          )
+        )))
+    ),closeIH));
+  }
+
   if(st.showCloseCycle){
     const ce=new Date(st.billingStart);ce.setDate(ce.getDate()+27);
     const ns=new Date(ce);ns.setDate(ns.getDate()+1);
@@ -3443,6 +3753,29 @@ function rModals(){
               )
             )
           ),
+      h('div',{className:'sd'},'📠 Driver\'s Printer'),
+      h('div',{style:{fontSize:'13px',color:'#555',marginBottom:'8px'}},'Printed invoices can be emailed straight to the driver\'s printer (Brother Email Print) after you close a cycle.'),
+      lbl('Printer Email Address'),
+      h('input',{type:'email',className:'fi',value:st.driverPrinterEmail||'',placeholder:'e.g. 1234567890@print.brother.com',oninput:e=>{st.driverPrinterEmail=e.target.value.trim();ps('driverPrinterEmail');}}),
+      h('div',{style:{display:'flex',gap:'10px',flexWrap:'wrap',marginBottom:'8px'}},
+        ...[['printRouteR1','Round 1 printed bills'],['printRouteR2','Round 2 printed bills']].map(([k,label])=>
+          h('div',{style:{flex:'1',minWidth:'150px'}},lbl(label),
+            h('select',{className:'fi',value:st[k],onchange:e=>{st[k]=e.target.value;ps(k);render();}},
+              h('option',{value:'home'},'🖨 Print at home'),
+              h('option',{value:'driver'},'📠 Driver\'s printer')
+            )
+          )
+        )
+      ),
+      btn('b3',{style:{width:'100%',marginBottom:'14px',padding:'8px'}},'📠 Send Test Page to Driver\'s Printer',async()=>{
+        const to=(st.driverPrinterEmail||'').trim();
+        if(!to){alert('Enter the printer email address first.');return;}
+        toast('📠 Sending test page…');
+        try{
+          await sendSnapshotsToDriverPrinter([{invoice_html:'<div class="hdr"><div><h1>&#128240; '+(st.bizDetails.name||'C J TORODE')+'</h1><div class="sub">Printer Test</div></div></div><p style="font-size:14px;margin-top:20px">If you can read this, invoices will print on this printer.</p><p style="font-size:12px;color:#888">Sent '+new Date().toLocaleString('en-GB')+'</p>'}],'RoundsPro printer test');
+          toast('✓ Test page sent — check the printer');
+        }catch(e){alert('⚠ Test failed: '+e.message);}
+      }),
       h('div',{className:'sd'},'🧾 Invoice Style'),
       h('div',{style:{fontSize:'13px',color:'#555',marginBottom:'10px'}},'Choose how customer bills are presented when printing or emailing.'),
       h('div',{style:{display:'flex',gap:'10px',marginBottom:'4px'}},
@@ -4868,6 +5201,16 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
             '  ─────────────────────────\n'+
             '  TOTAL DUE:         £'+c.totalDue.toFixed(2)+'\n\n'+
             'Kind regards,\nCraig Torode\n'+(biz2.address||'Sablonierre, Grandes Rocques, Castel, Guernsey. GY5 7FR')+'\nCraigpapers@icloud.com';
+          // Save a copy of exactly what's being sent (invoice history)
+          try {
+            await saveInvoiceSnapshots([{id:'shop_'+wk.id,user_id:USER_ID,kind:'shop',round_key:null,customer_id:'shop',
+              customer_name:'Alliance Ltd',customer_address:'',customer_email:toEmail,period_start:wk.weekStart||null,
+              period_label:'Invoice '+wk.invoiceNum+' — w/e '+wk.weekEnd,cycle_total:parseFloat(c.totalDue.toFixed(2)),
+              previous_outstanding:0,credit_applied:0,total_to_pay:parseFloat(c.totalDue.toFixed(2)),delivery:'email',
+              invoice_html:html2,email_html:html2,email_text:text2,created_at:new Date().toISOString()}]);
+          } catch(snapErr) {
+            if(!confirm('⚠ Couldn\'t save a copy of this invoice to history ('+snapErr.message+').\n\nSend it anyway?')) return;
+          }
           try {
             const payload = {to:toEmail,subject,html:html2,text:text2,from:'craigpapers@newsagentdelivr.com',fromName:biz2.name||'C J Torode Newsagent'};
             if(ccEmail) payload.cc = ccEmail;
@@ -4930,6 +5273,40 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
           )
         )
       )
+    ),
+
+    // Sent shop invoices (saved copies)
+    h('div',{className:'card',style:{marginBottom:'16px'}},
+      h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:'8px'}},
+        h('div',{className:'sd',style:{margin:'0',border:'none'}},'🗂 Sent Invoices'),
+        btn('b3',{style:{fontSize:'12px'}},st.shopSent&&st.shopSent!=='loading'?'↻ Refresh':'Show',()=>{
+          st.shopSent='loading';render();
+          loadInvoices('kind=eq.shop&select=id,period_label,total_to_pay,customer_email,created_at&order=created_at.desc&limit=30')
+            .then(r=>{st.shopSent=r||[];render();}).catch(e=>{st.shopSent={error:e.message};render();});
+        })
+      ),
+      st.shopSent==null?null
+      :st.shopSent==='loading'?h('div',{style:{fontSize:'13px',color:'#888'}},'Loading…')
+      :st.shopSent.error?h('div',{className:'a2'},'⚠ '+st.shopSent.error)
+      :!st.shopSent.length?h('div',{style:{fontSize:'13px',color:'#aaa'}},'No saved shop invoices yet — copies are saved each time you email one.')
+      :h('div',{},...st.shopSent.map(r=>h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:'8px',padding:'8px 0',borderBottom:'1px solid #e8e0d0',flexWrap:'wrap'}},
+          h('div',{},h('div',{style:{fontWeight:'bold',fontSize:'13px'}},r.period_label),h('div',{style:{fontSize:'11px',color:'#888'}},'Sent '+fd(r.created_at)+' · '+fmt(r.total_to_pay))),
+          h('div',{style:{display:'flex',gap:'6px'}},
+            btn('b3',{style:{fontSize:'12px'}},'👁 View',async()=>{try{const f=(await loadInvoices('id=eq.'+encodeURIComponent(r.id)+'&select=invoice_html'))[0];if(f)doPrint(f.invoice_html);}catch(e){alert('⚠ '+e.message);}}),
+            btn('b4',{style:{fontSize:'12px'}},'✉ Re-send',async()=>{
+              const to=st.shopEmail||'Zak@alliance.gg';
+              if(!confirm('Re-send '+r.period_label+' to '+to+'?'))return;
+              try{
+                const f=(await loadInvoices('id=eq.'+encodeURIComponent(r.id)+'&select=*'))[0];
+                const resp=await fetch('/.netlify/functions/send-email',{method:'POST',headers:{'Content-Type':'application/json'},
+                  body:JSON.stringify({to,subject:r.period_label.replace(' — ',' — Week Ending ').replace('w/e ','')+' (Copy)',html:f.email_html,text:f.email_text||'',from:'craigpapers@newsagentdelivr.com',fromName:st.bizDetails.name||'C J Torode Newsagent'})});
+                const d=await resp.json().catch(()=>({}));
+                if(!resp.ok)throw new Error(d.error||resp.status);
+                toast('✓ Re-sent to '+to);
+              }catch(e){alert('⚠ Send failed: '+e.message);}
+            })
+          )
+        )))
     ),
 
     // Week list

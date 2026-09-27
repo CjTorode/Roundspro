@@ -41,7 +41,9 @@ exports.handler = async function(event) {
     from: 'C J Torode Newsagent <craigpapers@newsagentdelivr.com>',
     to: [to],
     subject: subject || 'Invoices',
-    text: '', // blank body = no extra printed page
+    // Resend won't accept an empty body, so send a single space —
+    // no visible text, so Brother shouldn't print an extra page for it.
+    text: ' ',
     attachments: [{ filename: filename || 'invoices.pdf', content: pdfBase64 }]
   };
 

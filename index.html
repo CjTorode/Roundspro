@@ -1153,10 +1153,10 @@ function roundLabel(roundKey){ return roundKey==='round-2'?'Round 2':'Round 1'; 
 function inRound(c, roundKey){ return roundKey==='round-2'?c.roundId==='round-2':c.roundId!=='round-2'; }
 function printRouteFor(roundKey){ return roundKey==='round-2'?(st.printRouteR2||'driver'):(st.printRouteR1||'home'); }
 
-function buildInvoiceSnapshot(c, roundKey, periodStart, periodLabel){
+function buildInvoiceSnapshot(c, roundKey, periodStart, periodLabel, suppressBalance){
   const bill=calcBill(c,periodStart,28);
   const outstanding=c.balance<0?Math.abs(c.balance):0;
-  const credit=c.balance>0?c.balance:0;
+  const credit=(!suppressBalance&&c.balance>0)?c.balance:0;
   const r2=v=>parseFloat((v||0).toFixed(2));
   return {
     id: 'inv_'+c.id+'_'+periodStart,
@@ -1174,9 +1174,9 @@ function buildInvoiceSnapshot(c, roundKey, periodStart, periodLabel){
     credit_applied: r2(credit),
     total_to_pay: r2(Math.max(0,bill.grandTotal+outstanding-credit)),
     delivery: (c.email||'').trim()?'email':'print',
-    invoice_html: buildInvoiceHTML(c),
-    email_html: buildHTMLEmail(c),
-    email_text: buildPlainTextBill(c),
+    invoice_html: buildInvoiceHTML(c, suppressBalance),
+    email_html: buildHTMLEmail(c, undefined, undefined, suppressBalance),
+    email_text: buildPlainTextBill(c, undefined, undefined, suppressBalance),
     created_at: new Date().toISOString()
   };
 }
@@ -1185,6 +1185,20 @@ async function saveInvoiceSnapshots(rows){
   if(!getSB()) throw new Error('Not connected to Supabase — invoices can\'t be saved while offline.');
   // Save in batches so a big round doesn't make one huge request
   for(let i=0;i<rows.length;i+=20){ await sbUpsert('invoices', rows.slice(i,i+20)); }
+}
+
+// Save a copy of each bill at the moment it goes out (print / email / driver).
+// Re-sending a customer's bill later in the week replaces their copy, so the
+// history always holds the latest version they were actually sent.
+// Never blocks sending — if it fails, the close at the weekend saves them instead.
+function snapshotSentBills(custs, suppressBalance){
+  const rows=(custs||[]).filter(c=>c&&!c.cancelled).map(c=>buildInvoiceSnapshot(
+    c, c.roundId==='round-2'?'round-2':'round-1', getBillingStart(c), getBillingPeriod(c), suppressBalance));
+  if(!rows.length||!getSB()) return Promise.resolve(false);
+  return saveInvoiceSnapshots(rows).then(()=>true).catch(e=>{
+    toast('⚠ Couldn\'t save invoice copies ('+e.message+') — they\'ll be saved when you close the round');
+    return false;
+  });
 }
 
 async function loadInvoices(params){
@@ -1203,13 +1217,20 @@ async function closeCycleWithSnapshots(startKey, periodKey){
   const custs=st.customers.filter(c=>!c.cancelled&&inRound(c,roundKey)).sort((a,b)=>(a.listOrder||0)-(b.listOrder||0));
   if(!custs.length){alert('No active customers on '+roundLabel(roundKey)+'.');return;}
   if(!confirm('Close '+roundLabel(roundKey)+' — '+periodLabel+'?\n\n'
-    +custs.length+' invoices will be saved to invoice history, then each account is charged and the next period starts.\n\nThis cannot be undone.')) return;
+    +'Each account on this round ('+custs.length+') is charged and the next period starts. Any bill not already sent is saved to invoice history first.\n\nThis cannot be undone.')) return;
   closeCycleWithSnapshots._busy=true;
-  toast('💾 Saving '+custs.length+' invoices…');
-  let snaps;
+  toast('💾 Checking saved invoices…');
+  let snaps, alreadySaved=0;
   try{
-    snaps=custs.map(c=>buildInvoiceSnapshot(c,roundKey,periodStart,periodLabel));
-    await saveInvoiceSnapshots(snaps);
+    // Bills already sent this period were saved at the time they went out —
+    // keep those exactly as sent; only save copies for anyone not yet sent.
+    if(!getSB()) throw new Error('Not connected to Supabase — invoices can\'t be saved while offline.');
+    const existing=await loadInvoices('kind=eq.round&round_key=eq.'+roundKey+'&period_start=eq.'+periodStart+'&select=customer_id');
+    const have=new Set((existing||[]).map(r=>String(r.customer_id)));
+    const missing=custs.filter(c=>!have.has(String(c.id)));
+    alreadySaved=custs.length-missing.length;
+    snaps=missing.map(c=>buildInvoiceSnapshot(c,roundKey,periodStart,periodLabel));
+    if(snaps.length) await saveInvoiceSnapshots(snaps);
   }catch(e){
     closeCycleWithSnapshots._busy=false;
     alert('⚠ Couldn\'t save the invoices — the cycle has NOT been closed.\n\n'+e.message+'\n\nCheck your connection and try again.');
@@ -1228,8 +1249,8 @@ async function closeCycleWithSnapshots(startKey, periodKey){
   st[periodKey]=fds(st[startKey])+' – '+fds(ne.toISOString().split('T')[0]);
   st.showCloseCycle=false;
   closeCycleWithSnapshots._busy=false;
-  st.postClose={roundKey,periodLabel,count:snaps.length,printSnaps:snaps.filter(s=>s.delivery==='print'),status:''};
-  pa();render();toast('✓ '+roundLabel(roundKey)+' closed — '+snaps.length+' invoices saved');
+  st.postClose={roundKey,periodLabel,count:custs.length,alreadySaved,printSnaps:snaps.filter(s=>s.delivery==='print'),status:''};
+  pa();render();toast('✓ '+roundLabel(roundKey)+' closed');
 }
 
 // Print saved invoices on this device (AirPrint / Save as PDF)
@@ -2275,13 +2296,31 @@ function rBilling(){
           withBillingDateOverride(st.billingRoundFilter, st.billingReprintStart, ()=>{
             printAllBills(toPrint, isBulkReprint);
           });
+          if(!isBulkReprint) snapshotSentBills(toPrint);
           toast('🖨 Printing '+toPrint.length+' bill'+(toPrint.length!==1?'s':'')+(skipped.length?' · Skipped '+skipped.length+' (have email)':''));
         }),
+        (st.driverPrinterEmail||'').trim()?btn('b4',{style:{padding:'7px 16px',fontSize:'13px',background:'#2a5e8e'}},'📠 Send to Driver',async()=>{
+          const toPrint = getBillingCusts().filter(c=>!(c.email||'').trim()&&!c.cancelled);
+          if(!toPrint.length){alert('Nothing to print — everyone in this selection has an email address.');return;}
+          const roundName = (st.billingRoundFilter&&st.billingRoundFilter!=='all') ? (st.rounds.find(r=>r.id===st.billingRoundFilter)||{name:'Round'}).name : 'All rounds';
+          if(!confirm('Send '+toPrint.length+' printed bill'+(toPrint.length!==1?'s':'')+' ('+roundName+') to the driver\'s printer?'+(isBulkReprint?'\n\n⚠ This is a REPRINT of a past cycle.':'')))return;
+          let snaps, period='';
+          withBillingDateOverride(st.billingRoundFilter, st.billingReprintStart, ()=>{
+            snaps = toPrint.map(c=>({invoice_html:buildInvoiceHTML(c, undefined, isBulkReprint)}));
+            period = getBillingPeriod(toPrint[0]);
+          });
+          try{
+            await sendSnapshotsToDriverPrinter(snaps, roundName+' invoices '+(period||''), m=>toast('📠 '+m));
+            if(!isBulkReprint) snapshotSentBills(toPrint);
+            toast('✓ Sent '+snaps.length+' bill'+(snaps.length!==1?'s':'')+' to the driver\'s printer');
+          }catch(e){alert('⚠ '+e.message);}
+        }):null,
         btn('b4',{style:{padding:'7px 16px',fontSize:'13px'}},'📧 Email ALL',()=>{
           const custs = getBillingCusts();
           const toEmail = custs.filter(c=>c.email);
           if(!toEmail.length){alert('No customers with email addresses in this selection.');return;}
           if(!confirm('Send invoices to '+toEmail.length+' customer'+(toEmail.length!==1?'s':'')+' by email?'+(isBulkReprint?'\n\n⚠ This is a REPRINT of a past cycle ('+fds(st.billingReprintStart)+').':'')+'\n\nEmails will be sent automatically via SendGrid — no Mail app needed.'))return;
+          if(!isBulkReprint) snapshotSentBills(toEmail);
           emailAllBills(toEmail, isBulkReprint?st.billingReprintStart:undefined, isBulkReprint?28:undefined, isBulkReprint);
         })
       )
@@ -2516,6 +2555,7 @@ function rBilling(){
               const skipped = roundFiltered.filter(function(c){return c.email;});
               if(!toPrint.length){alert('Nothing to print in this selection.\n\nAll customers have email addresses — use "📧 Email ALL Bills" instead.');return;}
               printAllBills(toPrint);
+              snapshotSentBills(toPrint);
               if(skipped.length)toast('🖨 Printing '+toPrint.length+' bill'+(toPrint.length!==1?'s':'')+' · Skipped '+skipped.length+' (have email)');
               else toast('🖨 Printing '+toPrint.length+' bill'+(toPrint.length!==1?'s':''));
             }),
@@ -2525,6 +2565,7 @@ function rBilling(){
               const toEmail = roundFiltered.filter(function(c){return c.email;});
               if(!toEmail.length){alert('No customers with email addresses in this selection.');return;}
               if(!confirm('Send invoices to '+toEmail.length+' customer'+(toEmail.length!==1?'s':'')+' by email?\n\nEmails will be sent automatically via SendGrid — no Mail app needed.'))return;
+              snapshotSentBills(toEmail);
               emailAllBills(toEmail);
             })
           ),
@@ -3194,11 +3235,12 @@ function rModals(){
     };
     const bigStyle={padding:'14px',fontSize:'15px',width:'100%',marginBottom:'8px'};
     ms.push(mod('✓ '+roundLabel(pc.roundKey)+' Closed',h('div',{},
-      h('div',{className:'a4',style:{marginBottom:'14px'}},'💾 '+pc.count+' invoices saved to history for '+pc.periodLabel+'.'),
+      h('div',{className:'a4',style:{marginBottom:'14px'}},'💾 All '+pc.count+' invoices for '+pc.periodLabel+' are in history'
+        +(pc.alreadySaved?' ('+pc.alreadySaved+' saved when sent'+(pc.count-pc.alreadySaved?', '+(pc.count-pc.alreadySaved)+' saved now':'')+')':'')+'.'),
       n===0
-        ? h('div',{style:{fontSize:'14px',color:'#555',marginBottom:'14px'}},'Everyone on this round gets their invoice by email — nothing to print.')
+        ? h('div',{style:{fontSize:'14px',color:'#555',marginBottom:'14px'}},pc.alreadySaved?'All bills were already sent before closing — nothing more to print.':'Everyone on this round gets their invoice by email — nothing to print.')
         : h('div',{},
-            h('div',{style:{fontSize:'14px',marginBottom:'12px'}},h('strong',{},n+' invoice'+(n!==1?'s':'')),' need printing (customers without email).'),
+            h('div',{style:{fontSize:'14px',marginBottom:'12px'}},h('strong',{},n+' invoice'+(n!==1?'s':'')),' not sent yet need printing (customers without email).'),
             !hasPrinter?h('div',{className:'a2',style:{marginBottom:'10px'}},'No driver\'s printer email set yet — add it in ⚙ Settings to send from here.'):null,
             pc.status?h('div',{className:pc.status.startsWith('⚠')?'a2':(pc.sent?'a4':'a1'),style:{marginBottom:'10px'}},pc.status):null,
             route==='driver'
@@ -3376,9 +3418,9 @@ function rModals(){
           );
         })(),
         h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px',marginBottom:'8px'}},
-          btn('b1','🖨 Print',()=>{doPrintBill();st.showBillModal=null;st.reprintStart=null;st.reprintDays=28;render();}),
+          btn('b1','🖨 Print',()=>{doPrintBill();if(!isReprint)snapshotSentBills([c],true);st.showBillModal=null;st.reprintStart=null;st.reprintDays=28;render();}),
           c.email
-            ?btn('b4','📧 Email to '+c.email.split('@')[0],()=>{doEmailBill();st.showBillModal=null;st.reprintStart=null;st.reprintDays=28;render();})
+            ?btn('b4','📧 Email to '+c.email.split('@')[0],()=>{doEmailBill();if(!isReprint)snapshotSentBills([c],true);st.showBillModal=null;st.reprintStart=null;st.reprintDays=28;render();})
             :h('div',{style:{background:'#f5f5f5',border:'1px solid #ddd',borderRadius:'3px',padding:'10px 6px',fontSize:'11px',color:'#aaa',textAlign:'center'}},'📧 No email on file')
         ),
         btn('b3',{style:{width:'100%'}},'⚖ Correct Balance for This Cycle',()=>{

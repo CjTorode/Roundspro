@@ -170,10 +170,16 @@ function initSupabase(url, key){
   localStorage.setItem('cjt_sbKey', _sbKey);
 }
 
-// Try to auto-init from stored config
+// Built-in connection details — so a new browser or device never sees the setup screen.
+// The anon key is designed to be public; Row Level Security protects the data.
+const DEFAULT_SB_URL = 'https://vriygzgbyutgigjakwgq.supabase.co';
+const DEFAULT_SB_KEY = 'PASTE_ANON_KEY_HERE'; // ← paste the legacy anon key (starts eyJ…)
+
+// Try to auto-init from stored config, falling back to the built-in details
 (function(){
-  const url = localStorage.getItem('cjt_sbUrl');
-  const key = localStorage.getItem('cjt_sbKey');
+  let url = localStorage.getItem('cjt_sbUrl');
+  let key = localStorage.getItem('cjt_sbKey');
+  if(!(url && key) && DEFAULT_SB_KEY.startsWith('eyJ')){ url = DEFAULT_SB_URL; key = DEFAULT_SB_KEY; }
   if(url && key) initSupabase(url, key);
 })();
 
@@ -4318,7 +4324,7 @@ function rShop(){
     // Camera scan helper (uses Anthropic Vision API if available)
     const doScan = async () => {
       const inp = document.createElement('input');
-      inp.type = 'file'; inp.accept = 'image/*'; inp.capture = 'environment';
+      inp.type = 'file'; inp.accept = 'image/*'; // no capture attr — lets iPhone choose Camera OR Photo Library
       inp.onchange = async e => {
         const file = e.target.files[0]; if(!file) return;
         const toastEl = document.getElementById('scan-toast');
@@ -5526,7 +5532,7 @@ function render(){
 checkWedCharge();
 
 // ── STARTUP ──────────────────────────────────────────────────────
-if(!localStorage.getItem('cjt_sbUrl')){
+if(!getSB()){
   showSetupScreen();
 } else if(!isLoggedIn()){
   showPinScreen();

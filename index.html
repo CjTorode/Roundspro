@@ -594,6 +594,7 @@ async function startApp(){
   localStorage.removeItem('cjt_customers');
   localStorage.removeItem('cjt_rounds');
   localStorage.removeItem('cjt_payments');
+  localStorage.removeItem('cjt_stock'); // never trust an old cached stock list — Supabase is the source of truth
   // Reload st from localStorage (will use defaults since cache cleared)
   st.customers = S.get('customers', IR ? [] : []);
   render(); // Show app immediately
@@ -5526,7 +5527,7 @@ function render(){
     }
     return fix;
   });
-  if(changed){S.set('stock',st.stock);DB.saveStock();}
+  if(changed){S.set('stock',st.stock);} // local only — never upload before the first Supabase load (stale caches caused duplicate stock)
 })();
 
 checkWedCharge();

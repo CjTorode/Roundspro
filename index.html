@@ -170,16 +170,10 @@ function initSupabase(url, key){
   localStorage.setItem('cjt_sbKey', _sbKey);
 }
 
-// Built-in connection details — so a new browser or device never sees the setup screen.
-// The anon key is designed to be public; Row Level Security protects the data.
-const DEFAULT_SB_URL = 'https://vriygzgbyutgigjakwgq.supabase.co';
-const DEFAULT_SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZyaXlnemdieXV0Z2lnamFrd2dxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0MzkwODgsImV4cCI6MjA5NTAxNTA4OH0.JHBjP4F9RHpKlAFZRK_X5xy5zlbKDB30bumCN8aEH6s'; // ← paste the legacy anon key (starts eyJ…)
-
-// Try to auto-init from stored config, falling back to the built-in details
+// Try to auto-init from stored config
 (function(){
-  let url = localStorage.getItem('cjt_sbUrl');
-  let key = localStorage.getItem('cjt_sbKey');
-  if(!(url && key) && DEFAULT_SB_KEY.startsWith('eyJ')){ url = DEFAULT_SB_URL; key = DEFAULT_SB_KEY; }
+  const url = localStorage.getItem('cjt_sbUrl');
+  const key = localStorage.getItem('cjt_sbKey');
   if(url && key) initSupabase(url, key);
 })();
 
@@ -230,7 +224,7 @@ const DB = {
   SETTINGS_KEYS: ['gstRate','gstEnabled','gstNumber','defaultDelivery','showCostPrice',
     'calEvents','billingStart','billingPeriod','billingStart2','billingPeriod2','bizDetails','lastWedCharge','billStyle',
     'shopDiscountPaper','shopDiscountMag','shopEmail','shopEmail2','sendgridKey','noPaperDays','magCheckDismissed',
-    'driverPrinterEmail','printRouteR1','printRouteR2'],
+    'driverEmail','printRouteR1','printRouteR2'],
 
   async saveCustomers(){
     if(!getSB()) return;
@@ -594,7 +588,6 @@ async function startApp(){
   localStorage.removeItem('cjt_customers');
   localStorage.removeItem('cjt_rounds');
   localStorage.removeItem('cjt_payments');
-  localStorage.removeItem('cjt_stock'); // never trust an old cached stock list — Supabase is the source of truth
   // Reload st from localStorage (will use defaults since cache cleared)
   st.customers = S.get('customers', IR ? [] : []);
   render(); // Show app immediately
@@ -723,8 +716,8 @@ const st={
   showNoPaperModal: false,
   newNoPaperDate: new Date().toISOString().split('T')[0],
   newNoPaperGpOnly: true,
-  // ── INVOICE SNAPSHOTS & DRIVER'S PRINTER ─────────────────────────
-  driverPrinterEmail: S.get('driverPrinterEmail', ''),
+  // ── INVOICE SNAPSHOTS & DRIVER EMAIL ─────────────────────────
+  driverEmail: S.get('driverEmail', 'catorode@me.com'), // driver gets printed bills as a PDF by email
   printRouteR1: S.get('printRouteR1', 'home'),   // 'home' | 'driver'
   printRouteR2: S.get('printRouteR2', 'driver'), // 'home' | 'driver'
   postClose: null,            // set after a cycle closes → shows the "send printed invoices" step
@@ -1269,7 +1262,7 @@ function printSnapshots(snaps, copyNote){
   doPrint('<!DOCTYPE html><html><head><meta charset="utf-8"><style>'+getInvoiceCSS()+'</style></head><body>'+pages.join('')+'</body></html>');
 }
 
-// ── DRIVER'S PRINTER (email-to-print) ────────────────────────────
+// ── DRIVER EMAIL (PDF of printed bills) ────────────────────────────
 function loadScriptOnce(src){
   loadScriptOnce._p=loadScriptOnce._p||{};
   if(!loadScriptOnce._p[src]) loadScriptOnce._p[src]=new Promise((res,rej)=>{
@@ -1320,21 +1313,25 @@ async function snapshotsToPdfBase64(snaps){
   } finally { host.remove(); }
   return pdf.output('datauristring').split(',')[1];
 }
-// Sends in batches of 10 invoices per email to keep each attachment small.
+// Emails the bills to the driver as an A5 PDF (he opens it and prints it).
+// Sent in batches of 20 invoices per email to keep each attachment small.
 async function sendSnapshotsToDriverPrinter(snaps, label, onProgress){
-  const to=(st.driverPrinterEmail||'').trim();
-  if(!to) throw new Error('No driver\'s printer email set — add it in ⚙ Settings.');
+  const to=(st.driverEmail||'').trim();
+  if(!to) throw new Error('No driver email set — add it in ⚙ Settings.');
   if(!snaps.length) throw new Error('Nothing to send.');
-  const BATCH=10, total=snaps.length;
+  const BATCH=20, total=snaps.length;
   for(let i=0;i<total;i+=BATCH){
     const chunk=snaps.slice(i,i+BATCH);
     const range=total>BATCH?' ('+(i+1)+'–'+(i+chunk.length)+' of '+total+')':'';
     if(onProgress) onProgress('Building PDF'+range+'…');
     const pdfBase64=await snapshotsToPdfBase64(chunk);
-    if(onProgress) onProgress('Sending to printer'+range+'…');
-    const resp=await fetch('/.netlify/functions/send-to-printer',{
+    if(onProgress) onProgress('Emailing driver'+range+'…');
+    const n=chunk.length;
+    const text='Hi,\n\nAttached '+(n===1?'is 1 invoice':'are '+n+' invoices')+' to print'+range+' — '+label+'.\n\n'
+      +'Open the PDF, tap Share → Print, and choose A5 paper.\n\nThanks,\n'+(st.bizDetails.name||'C J Torode Newsagent');
+    const resp=await fetch('/.netlify/functions/send-to-driver',{
       method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({to,subject:label+range,filename:(label+range).replace(/[^\w\-]+/g,'-')+'.pdf',pdfBase64})
+      body:JSON.stringify({to,subject:label+range,text,filename:(label+range).replace(/[^\w\-]+/g,'-')+'.pdf',pdfBase64})
     });
     const data=await resp.json().catch(()=>({error:'No response ('+resp.status+')'}));
     if(!resp.ok) throw new Error(data.error||'Send failed ('+resp.status+')');
@@ -2306,20 +2303,20 @@ function rBilling(){
           if(!isBulkReprint) snapshotSentBills(toPrint);
           toast('🖨 Printing '+toPrint.length+' bill'+(toPrint.length!==1?'s':'')+(skipped.length?' · Skipped '+skipped.length+' (have email)':''));
         }),
-        (st.driverPrinterEmail||'').trim()?btn('b4',{style:{padding:'7px 16px',fontSize:'13px',background:'#2a5e8e'}},'📠 Send to Driver',async()=>{
+        (st.driverEmail||'').trim()?btn('b4',{style:{padding:'7px 16px',fontSize:'13px',background:'#2a5e8e'}},'📤 Send to Driver',async()=>{
           const toPrint = getBillingCusts().filter(c=>!(c.email||'').trim()&&!c.cancelled);
           if(!toPrint.length){alert('Nothing to print — everyone in this selection has an email address.');return;}
           const roundName = (st.billingRoundFilter&&st.billingRoundFilter!=='all') ? (st.rounds.find(r=>r.id===st.billingRoundFilter)||{name:'Round'}).name : 'All rounds';
-          if(!confirm('Send '+toPrint.length+' printed bill'+(toPrint.length!==1?'s':'')+' ('+roundName+') to the driver\'s printer?'+(isBulkReprint?'\n\n⚠ This is a REPRINT of a past cycle.':'')))return;
+          if(!confirm('Send '+toPrint.length+' printed bill'+(toPrint.length!==1?'s':'')+' ('+roundName+') to the driver by email?'+(isBulkReprint?'\n\n⚠ This is a REPRINT of a past cycle.':'')))return;
           let snaps, period='';
           withBillingDateOverride(st.billingRoundFilter, st.billingReprintStart, ()=>{
             snaps = toPrint.map(c=>({invoice_html:buildInvoiceHTML(c, undefined, isBulkReprint)}));
             period = getBillingPeriod(toPrint[0]);
           });
           try{
-            await sendSnapshotsToDriverPrinter(snaps, roundName+' invoices '+(period||''), m=>toast('📠 '+m));
+            await sendSnapshotsToDriverPrinter(snaps, roundName+' invoices '+(period||''), m=>toast('📤 '+m));
             if(!isBulkReprint) snapshotSentBills(toPrint);
-            toast('✓ Sent '+snaps.length+' bill'+(snaps.length!==1?'s':'')+' to the driver\'s printer');
+            toast('✓ Emailed '+snaps.length+' bill'+(snaps.length!==1?'s':'')+' to the driver');
           }catch(e){alert('⚠ '+e.message);}
         }):null,
         btn('b4',{style:{padding:'7px 16px',fontSize:'13px'}},'📧 Email ALL',()=>{
@@ -2501,9 +2498,9 @@ function rBilling(){
             h('div',{style:{fontSize:'12px',color:'#888'}},run.total+' invoices · '+run.print+' printed'),
             run.print?h('div',{style:{display:'flex',gap:'6px',marginTop:'6px',flexWrap:'wrap'}},
               btn('b1',{style:{padding:'7px 12px',fontSize:'12px'}},'🖨 Print '+run.print+' here',async()=>{try{printSnapshots(await getPrintSnaps(run),true);}catch(e){alert('⚠ '+e.message);}}),
-              (st.driverPrinterEmail||'').trim()?btn('b4',{style:{padding:'7px 12px',fontSize:'12px'}},'📠 Send to driver',async()=>{
-                if(!confirm('Send '+run.print+' printed invoices for '+roundLabel(run.round_key)+' ('+(run.period_label||'')+') to the driver\'s printer?'))return;
-                try{const snaps=await getPrintSnaps(run);await sendSnapshotsToDriverPrinter(snaps,roundLabel(run.round_key)+' invoices '+(run.period_label||''),m=>toast('📠 '+m));toast('✓ Sent to driver\'s printer');}
+              (st.driverEmail||'').trim()?btn('b4',{style:{padding:'7px 12px',fontSize:'12px'}},'📤 Send to driver',async()=>{
+                if(!confirm('Send '+run.print+' printed invoices for '+roundLabel(run.round_key)+' ('+(run.period_label||'')+') to the driver by email?'))return;
+                try{const snaps=await getPrintSnaps(run);await sendSnapshotsToDriverPrinter(snaps,roundLabel(run.round_key)+' invoices '+(run.period_label||''),m=>toast('📤 '+m));toast('✓ Emailed to driver');}
                 catch(e){alert('⚠ '+e.message);}
               }):null
             ):null
@@ -3228,7 +3225,7 @@ function rModals(){
   if(st.postClose){
     const pc=st.postClose;
     const route=printRouteFor(pc.roundKey);
-    const hasPrinter=!!(st.driverPrinterEmail||'').trim();
+    const hasPrinter=!!(st.driverEmail||'').trim();
     const n=pc.printSnaps.length;
     const closePC=()=>{if(pc.busy)return;st.postClose=null;render();};
     const sendDriver=async()=>{
@@ -3236,8 +3233,8 @@ function rModals(){
       pc.busy=true;pc.status='Starting…';render();
       try{
         await sendSnapshotsToDriverPrinter(pc.printSnaps, roundLabel(pc.roundKey)+' invoices '+pc.periodLabel, msg=>{pc.status=msg;render();});
-        pc.busy=false;pc.status='✓ Sent '+n+' invoice'+(n!==1?'s':'')+' to the driver\'s printer';pc.sent=true;render();
-        toast('✓ Invoices sent to driver\'s printer');
+        pc.busy=false;pc.status='✓ Emailed '+n+' invoice'+(n!==1?'s':'')+' to the driver';pc.sent=true;render();
+        toast('✓ Invoices emailed to driver');
       }catch(e){pc.busy=false;pc.status='⚠ '+e.message;render();}
     };
     const bigStyle={padding:'14px',fontSize:'15px',width:'100%',marginBottom:'8px'};
@@ -3248,13 +3245,13 @@ function rModals(){
         ? h('div',{style:{fontSize:'14px',color:'#555',marginBottom:'14px'}},pc.alreadySaved?'All bills were already sent before closing — nothing more to print.':'Everyone on this round gets their invoice by email — nothing to print.')
         : h('div',{},
             h('div',{style:{fontSize:'14px',marginBottom:'12px'}},h('strong',{},n+' invoice'+(n!==1?'s':'')),' not sent yet need printing (customers without email).'),
-            !hasPrinter?h('div',{className:'a2',style:{marginBottom:'10px'}},'No driver\'s printer email set yet — add it in ⚙ Settings to send from here.'):null,
+            !hasPrinter?h('div',{className:'a2',style:{marginBottom:'10px'}},'No driver email set yet — add it in ⚙ Settings to send from here.'):null,
             pc.status?h('div',{className:pc.status.startsWith('⚠')?'a2':(pc.sent?'a4':'a1'),style:{marginBottom:'10px'}},pc.status):null,
             route==='driver'
-              ? [btn('b4',{style:{...bigStyle,opacity:(pc.busy||!hasPrinter)?.5:1}},pc.sent?'📠 Send to driver\'s printer again':'📠 Send to driver\'s printer',sendDriver),
+              ? [btn('b4',{style:{...bigStyle,opacity:(pc.busy||!hasPrinter)?.5:1}},pc.sent?'📤 Email to driver again':'📤 Email to driver',sendDriver),
                  btn('b3',{style:{...bigStyle,fontSize:'13px'}},'🖨 Print here instead',()=>printSnapshots(pc.printSnaps))]
               : [btn('b1',{style:bigStyle},'🖨 Print here',()=>printSnapshots(pc.printSnaps)),
-                 btn('b3',{style:{...bigStyle,fontSize:'13px',opacity:(pc.busy||!hasPrinter)?.5:1}},'📠 Send to driver\'s printer (away)',sendDriver)]
+                 btn('b3',{style:{...bigStyle,fontSize:'13px',opacity:(pc.busy||!hasPrinter)?.5:1}},'📤 Email to driver (away)',sendDriver)]
           ),
       btn('b3',{style:{width:'100%',padding:'10px',opacity:pc.busy?.5:1}},pc.busy?'Working…':'Done',closePC)
     ),closePC));
@@ -3287,10 +3284,10 @@ function rModals(){
           h('div',{style:{display:'flex',gap:'6px',marginTop:'8px',flexWrap:'wrap'}},
             btn('b1',{style:{padding:'8px 12px',fontSize:'13px'}},'🖨 Reprint',async()=>{try{printSnapshots([await getFull(r)],true);}catch(e){alert('⚠ '+e.message);}}),
             btn('b4',{style:{padding:'8px 12px',fontSize:'13px'}},'📧 Email',async()=>{try{await emailSavedInvoice(r);}catch(e){alert('⚠ '+e.message);}}),
-            (st.driverPrinterEmail||'').trim()?btn('b3',{style:{padding:'8px 12px',fontSize:'13px'}},'📠 Driver',async()=>{
-              if(!confirm('Send this invoice to the driver\'s printer?'))return;
-              toast('📠 Sending…');
-              try{await sendSnapshotsToDriverPrinter([await getFull(r)],'Invoice copy '+r.customer_name+' '+(r.period_label||''));toast('✓ Sent to driver\'s printer');}
+            (st.driverEmail||'').trim()?btn('b3',{style:{padding:'8px 12px',fontSize:'13px'}},'📤 Driver',async()=>{
+              if(!confirm('Email this invoice to the driver to print?'))return;
+              toast('📤 Sending…');
+              try{await sendSnapshotsToDriverPrinter([await getFull(r)],'Invoice copy '+r.customer_name+' '+(r.period_label||''));toast('✓ Emailed to driver');}
               catch(e){alert('⚠ '+e.message);}
             }):null
           )
@@ -3810,27 +3807,27 @@ function rModals(){
               )
             )
           ),
-      h('div',{className:'sd'},'📠 Driver\'s Printer'),
-      h('div',{style:{fontSize:'13px',color:'#555',marginBottom:'8px'}},'Printed invoices can be emailed straight to the driver\'s printer (Brother Email Print) after you close a cycle.'),
-      lbl('Printer Email Address'),
-      h('input',{type:'email',className:'fi',value:st.driverPrinterEmail||'',placeholder:'e.g. 1234567890@print.brother.com',oninput:e=>{st.driverPrinterEmail=e.target.value.trim();ps('driverPrinterEmail');}}),
+      h('div',{className:'sd'},'📤 Driver\'s Email'),
+      h('div',{style:{fontSize:'13px',color:'#555',marginBottom:'8px'}},'Bills for customers without email can be sent to the driver as a PDF. He opens it on his phone and prints it on A5.'),
+      lbl('Driver\'s Email Address'),
+      h('input',{type:'email',className:'fi',value:st.driverEmail||'',placeholder:'e.g. driver@example.com',oninput:e=>{st.driverEmail=e.target.value.trim();ps('driverEmail');}}),
       h('div',{style:{display:'flex',gap:'10px',flexWrap:'wrap',marginBottom:'8px'}},
         ...[['printRouteR1','Round 1 printed bills'],['printRouteR2','Round 2 printed bills']].map(([k,label])=>
           h('div',{style:{flex:'1',minWidth:'150px'}},lbl(label),
             h('select',{className:'fi',value:st[k],onchange:e=>{st[k]=e.target.value;ps(k);render();}},
               h('option',{value:'home'},'🖨 Print at home'),
-              h('option',{value:'driver'},'📠 Driver\'s printer')
+              h('option',{value:'driver'},'📤 Email to driver')
             )
           )
         )
       ),
-      btn('b3',{style:{width:'100%',marginBottom:'14px',padding:'8px'}},'📠 Send Test Page to Driver\'s Printer',async()=>{
-        const to=(st.driverPrinterEmail||'').trim();
-        if(!to){alert('Enter the printer email address first.');return;}
-        toast('📠 Sending test page…');
+      btn('b3',{style:{width:'100%',marginBottom:'14px',padding:'8px'}},'📤 Send Test Email to Driver',async()=>{
+        const to=(st.driverEmail||'').trim();
+        if(!to){alert('Enter the driver\'s email address first.');return;}
+        toast('📤 Sending test email…');
         try{
-          await sendSnapshotsToDriverPrinter([{invoice_html:'<div class="hdr"><div><h1>&#128240; '+(st.bizDetails.name||'C J TORODE')+'</h1><div class="sub">Printer Test</div></div></div><p style="font-size:14px;margin-top:20px">If you can read this, invoices will print on this printer.</p><p style="font-size:12px;color:#888">Sent '+new Date().toLocaleString('en-GB')+'</p>'}],'RoundsPro printer test');
-          toast('✓ Test page sent — check the printer');
+          await sendSnapshotsToDriverPrinter([{invoice_html:'<div class="hdr"><div><h1>&#128240; '+(st.bizDetails.name||'C J TORODE')+'</h1><div class="sub">Test Page</div></div></div><p style="font-size:14px;margin-top:20px">This is a test from RoundsPro — bills will arrive like this, ready to print on A5.</p><p style="font-size:12px;color:#888">Sent '+new Date().toLocaleString('en-GB')+'</p>'}],'RoundsPro printer test');
+          toast('✓ Test email sent to driver');
         }catch(e){alert('⚠ Test failed: '+e.message);}
       }),
       h('div',{className:'sd'},'🧾 Invoice Style'),
@@ -4325,7 +4322,7 @@ function rShop(){
     // Camera scan helper (uses Anthropic Vision API if available)
     const doScan = async () => {
       const inp = document.createElement('input');
-      inp.type = 'file'; inp.accept = 'image/*'; // no capture attr — lets iPhone choose Camera OR Photo Library
+      inp.type = 'file'; inp.accept = 'image/*'; inp.capture = 'environment';
       inp.onchange = async e => {
         const file = e.target.files[0]; if(!file) return;
         const toastEl = document.getElementById('scan-toast');
@@ -5527,13 +5524,13 @@ function render(){
     }
     return fix;
   });
-  if(changed){S.set('stock',st.stock);} // local only — never upload before the first Supabase load (stale caches caused duplicate stock)
+  if(changed){S.set('stock',st.stock);DB.saveStock();}
 })();
 
 checkWedCharge();
 
 // ── STARTUP ──────────────────────────────────────────────────────
-if(!getSB()){
+if(!localStorage.getItem('cjt_sbUrl')){
   showSetupScreen();
 } else if(!isLoggedIn()){
   showPinScreen();

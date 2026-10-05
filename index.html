@@ -3342,6 +3342,28 @@ function rModals(){
       const isReprint = !!st.reprintStart;
 
       // Helper: print/email using current rpStart/rpDays overrides
+      // Invoice body for this screen's period (current, or a past cycle when reprinting)
+      function billBodyHTML(){
+        const startKey = c.roundId==='round-2'?'billingStart2':'billingStart';
+        const periodKey = c.roundId==='round-2'?'billingPeriod2':'billingPeriod';
+        const origStart=st[startKey], origPeriod=st[periodKey];
+        if(isReprint){
+          st[startKey]=rpStart;
+          const rpEnd=new Date(rpStart);rpEnd.setDate(rpEnd.getDate()+rpDays-1);
+          st[periodKey]=fds(rpStart)+' – '+fds(rpEnd.toISOString().split('T')[0]);
+        }
+        try{ return buildInvoiceHTML(c, true, isReprint); }
+        finally{ st[startKey]=origStart; st[periodKey]=origPeriod; }
+      }
+      async function doDriverBill(){
+        if(!confirm('Email '+c.name+'\'s '+(isReprint?'corrected ':'')+'bill to the driver to print?'))return;
+        toast('📤 Sending…');
+        try{
+          await sendSnapshotsToDriverPrinter([{invoice_html:billBodyHTML()}], (isReprint?'Corrected bill ':'Bill ')+c.name);
+          if(!isReprint)snapshotSentBills([c],true);
+          toast('✓ Emailed to driver');
+        }catch(e){alert('⚠ '+e.message);}
+      }
       function doPrintBill(){
         const css=getInvoiceCSS();
         // Temporarily swap billingStart for this customer's round so buildInvoiceHTML picks up the right period
@@ -3436,6 +3458,7 @@ function rModals(){
             ?btn('b4','📧 Email to '+c.email.split('@')[0],()=>{doEmailBill();if(!isReprint)snapshotSentBills([c],true);st.showBillModal=null;st.reprintStart=null;st.reprintDays=28;render();})
             :h('div',{style:{background:'#f5f5f5',border:'1px solid #ddd',borderRadius:'3px',padding:'10px 6px',fontSize:'11px',color:'#aaa',textAlign:'center'}},'📧 No email on file')
         ),
+        (st.driverEmail||'').trim()?btn('b4',{style:{width:'100%',marginBottom:'8px',background:'#2a5e8e'}},'📤 Send to Driver',doDriverBill):null,
         btn('b3',{style:{width:'100%'}},'⚖ Correct Balance for This Cycle',()=>{
           const rpEnd=new Date(rpStart);rpEnd.setDate(rpEnd.getDate()+rpDays-1);
           const periodLabel=fds(rpStart)+' – '+fds(rpEnd.toISOString().split('T')[0]);

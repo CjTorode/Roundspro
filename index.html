@@ -1333,8 +1333,11 @@ async function sendSnapshotsToDriverPrinter(snaps, label, onProgress){
     const pdfBase64=await snapshotsToPdfBase64(chunk);
     if(onProgress) onProgress('Emailing driver'+range+'…');
     const n=chunk.length;
-    const text='Hi,\n\nAttached '+(n===1?'is 1 invoice':'are '+n+' invoices')+' to print'+range+' — '+label+'.\n\n'
-      +'Open the PDF, tap Share → Print, and choose A5 paper.\n\nThanks,\n'+(st.bizDetails.name||'C J Torode Newsagent');
+    const text='⚠ DON\'T PRINT THIS EMAIL ⚠\n\n'
+      +'1. Tap the PDF attachment below so it opens on its own\n'
+      +'2. Then tap Share → Print\n'
+      +'3. Choose A5 paper and print\n\n'
+      +(n===1?'1 invoice':n+' invoices')+range+' — '+label+'.\n\nThanks,\n'+(st.bizDetails.name||'C J Torode Newsagent');
     const resp=await fetch('/.netlify/functions/send-to-driver',{
       method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({to,subject:label+range,text,filename:(label+range).replace(/[^\w\-]+/g,'-')+'.pdf',pdfBase64})

@@ -1301,14 +1301,20 @@ async function snapshotsToPdfBase64(snaps){
   document.body.appendChild(host);
   const inv=host.querySelector('.rpinv');
   try{
-    const maxW=124, maxH=186; // A5 (148×210mm) less 12mm margins
+    // Fill the A5 sheet: 6mm margins, and size each invoice so its shape
+    // matches the page (short bills render narrower so the text comes out
+    // bigger; long itemised bills render wider so they still fit).
+    const M=6, maxW=148-2*M, maxH=210-2*M, pageRatio=maxH/maxW;
     for(let i=0;i<snaps.length;i++){
       inv.innerHTML=snaps[i].invoice_html;
+      inv.style.width='469px';
+      const h0=inv.getBoundingClientRect().height;
+      inv.style.width=Math.round(Math.min(620,Math.max(380,h0/pageRatio)))+'px';
       const canvas=await window.html2canvas(inv,{scale:2,backgroundColor:'#ffffff',logging:false});
       let w=maxW, hgt=canvas.height*maxW/canvas.width;
       if(hgt>maxH){ w=w*maxH/hgt; hgt=maxH; }
       if(i>0) pdf.addPage();
-      pdf.addImage(canvas.toDataURL('image/jpeg',0.85),'JPEG',12,12,w,hgt);
+      pdf.addImage(canvas.toDataURL('image/jpeg',0.85),'JPEG',M+(maxW-w)/2,M,w,hgt);
     }
   } finally { host.remove(); }
   return pdf.output('datauristring').split(',')[1];

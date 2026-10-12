@@ -4354,7 +4354,7 @@ function rShop(){
     // Camera scan helper (uses Anthropic Vision API if available)
     const doScan = async () => {
       const inp = document.createElement('input');
-      inp.type = 'file'; inp.accept = 'image/*'; inp.capture = 'environment';
+      inp.type = 'file'; inp.accept = 'image/*';
       inp.onchange = async e => {
         const file = e.target.files[0]; if(!file) return;
         const toastEl = document.getElementById('scan-toast');

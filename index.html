@@ -1192,7 +1192,12 @@ async function saveInvoiceSnapshots(rows){
 // history always holds the latest version they were actually sent.
 // Never blocks sending — if it fails, the close at the weekend saves them instead.
 function snapshotSentBills(custs, suppressBalance){
-  const rows=(custs||[]).filter(c=>c&&!c.cancelled).map(c=>buildInvoiceSnapshot(
+  // Only bills sent in the last 10 days of a cycle count as the final bill.
+  // Anything sent earlier (checking a bill, a one-off print) isn't saved, so
+  // the close saves a fresh, up-to-date copy instead.
+  const today=new Date().toISOString().split('T')[0];
+  const nearEnd=c=>{const e=new Date(getBillingStart(c));e.setDate(e.getDate()+27-10);return today>=e.toISOString().split('T')[0];};
+  const rows=(custs||[]).filter(c=>c&&!c.cancelled&&nearEnd(c)).map(c=>buildInvoiceSnapshot(
     c, c.roundId==='round-2'?'round-2':'round-1', getBillingStart(c), getBillingPeriod(c), suppressBalance));
   if(!rows.length||!getSB()) return Promise.resolve(false);
   return saveInvoiceSnapshots(rows).then(()=>true).catch(e=>{
@@ -2493,6 +2498,69 @@ function rBilling(){
         const order={};st.customers.forEach(c=>{order[String(c.id)]=c.listOrder||0;});
         return (rows||[]).sort((a,b)=>(order[a.customer_id]||0)-(order[b.customer_id]||0));
       };
+      // Rebuild every bill in a closed run from today's data: this cycle's charge
+      // recalculated (current holidays/papers), and the balance as it stood just
+      // before the close (current balance + this cycle's charge). Replaces the
+      // saved copies — nothing is emailed until you tap 📧 Email.
+      const rebuildRun=async(run)=>{
+        const label=roundLabel(run.round_key)+' ('+(run.period_label||'')+')';
+        if(!confirm('Rebuild all '+label+' bills from current data?\n\nUse this if saved copies are out of date. Saved copies are replaced; nothing is sent.\n\nOnly do this if no payments have been entered for this round since you closed it.'))return;
+        const startKey=run.round_key==='round-2'?'billingStart2':'billingStart';
+        const periodKey=run.round_key==='round-2'?'billingPeriod2':'billingPeriod';
+        const o1=st[startKey], o2=st[periodKey];
+        const custs=st.customers.filter(c=>!c.cancelled&&inRound(c,run.round_key));
+        let rows, before={};
+        try{
+          (await loadInvoices('kind=eq.round&round_key=eq.'+run.round_key+'&period_start=eq.'+run.period_start+'&select=customer_id,total_to_pay'))
+            .forEach(r=>{before[String(r.customer_id)]=r.total_to_pay;});
+        }catch(e){}
+        try{
+          st[startKey]=run.period_start; st[periodKey]=run.period_label||o2;
+          rows=custs.map(c=>{
+            const b=calcBill(c,run.period_start,28);
+            const pre={...c,balance:parseFloat(((c.balance||0)+b.grandTotal).toFixed(2))};
+            return buildInvoiceSnapshot(pre,run.round_key,run.period_start,run.period_label);
+          });
+        } finally { st[startKey]=o1; st[periodKey]=o2; }
+        // Which bills changed (and were emailed) — those customers need a correction
+        const changed=rows.filter(r=>r.delivery==='email'&&before[r.customer_id]!=null&&Math.abs(Number(before[r.customer_id])-r.total_to_pay)>0.004);
+        try{
+          await saveInvoiceSnapshots(rows);
+          st.rebuilt=st.rebuilt||{};
+          st.rebuilt[run.round_key+'|'+run.period_start]=changed.map(r=>({id:r.id,name:r.customer_name,was:Number(before[r.customer_id]),now:r.total_to_pay}));
+          alert('✓ Rebuilt '+rows.length+' bills.\n\n'+(changed.length
+            ?changed.length+' emailed bill'+(changed.length!==1?'s were':' was')+' wrong:\n'+changed.map(r=>'• '+r.customer_name+': £'+Number(before[r.customer_id]).toFixed(2)+' → £'+r.total_to_pay.toFixed(2)).join('\n')+'\n\nCheck one in 🗂 Invoices, then tap "📧 Email corrections".'
+            :'No emailed bills changed — nothing needs re-sending.'));
+          load();
+        }
+        catch(e){ alert('⚠ Couldn\'t save: '+e.message); }
+      };
+      // Email corrected bills only to customers whose emailed bill was wrong
+      const emailCorrections=async(run,list)=>{
+        if(!confirm('Email corrected bills to '+list.length+' customer'+(list.length!==1?'s':'')+'?\n\n'+list.map(x=>'• '+x.name+' — now £'+x.now.toFixed(2)).join('\n')))return;
+        const biz=st.bizDetails; let sent=0; const failed=[];
+        const note='<div style="background:#fff3cd;border:2px solid #e0a800;border-radius:6px;padding:12px 14px;margin:0 0 16px;font-family:Georgia,serif;font-size:15px;color:#5a4500">'
+          +'<strong>Corrected invoice</strong> — please ignore the invoice we sent earlier for this period. This one replaces it. Sorry for any confusion.</div>';
+        for(const x of list){
+          try{
+            const r=(await loadInvoices('id=eq.'+encodeURIComponent(x.id)+'&select=*'))[0];
+            const c=st.customers.find(y=>String(y.id)===String(r.customer_id));
+            const to=((c&&c.email)||r.customer_email||'').trim();
+            if(!to)throw new Error('no email');
+            toast('📧 Sending '+(sent+failed.length+1)+' of '+list.length+'…');
+            const html=/<body[^>]*>/i.test(r.email_html)?r.email_html.replace(/(<body[^>]*>)/i,'$1'+note):note+r.email_html;
+            const resp=await fetch('/.netlify/functions/send-email',{method:'POST',headers:{'Content-Type':'application/json'},
+              body:JSON.stringify({to,subject:(biz.name||'C J Torode')+' — Corrected Invoice '+(r.period_label||''),html,
+                text:'CORRECTED INVOICE — please ignore the earlier invoice for this period. This one replaces it.\n\n'+(r.email_text||''),
+                from:'craigpapers@newsagentdelivr.com',fromName:biz.name||'C J Torode Newsagent'})});
+            if(!resp.ok){const d=await resp.json().catch(()=>({}));throw new Error(d.error||resp.status);}
+            sent++;
+          }catch(e){failed.push(x.name+' ('+e.message+')');}
+          await new Promise(res=>setTimeout(res,700));
+        }
+        if(failed.length) alert('✓ Sent '+sent+' corrections.\n\n⚠ Not sent:\n'+failed.join('\n'));
+        else toast('✓ Sent all '+sent+' corrected bills');
+      };
       // Email the saved bills (exactly as they stood before the close) to every
       // email customer on this run — e.g. if the round was closed before emailing.
       const emailRun=async(run)=>{
@@ -2530,8 +2598,11 @@ function rBilling(){
         :h('div',{style:{marginTop:'8px'}},...runs.map(run=>h('div',{style:{padding:'10px 0',borderBottom:'1px solid #e8e0d0'}},
             h('div',{style:{fontWeight:'bold',fontSize:'14px'}},roundLabel(run.round_key)+' — '+(run.period_label||fds(run.period_start))),
             h('div',{style:{fontSize:'12px',color:'#888'}},run.total+' invoices · '+run.email+' email · '+run.print+' printed'),
-            run.email&&!isDriver()?h('div',{style:{marginTop:'6px'}},
-              btn('b4',{style:{padding:'7px 12px',fontSize:'12px'}},'📧 Email '+run.email+' bills',()=>emailRun(run))):null,
+            !isDriver()?h('div',{style:{marginTop:'6px',display:'flex',gap:'6px',flexWrap:'wrap'}},
+              btn('b3',{style:{padding:'7px 12px',fontSize:'12px'}},'🔄 Rebuild bills',()=>rebuildRun(run)),
+              ((st.rebuilt||{})[run.round_key+'|'+run.period_start]||[]).length
+                ?btn('b2',{style:{padding:'7px 12px',fontSize:'12px'}},'📧 Email '+st.rebuilt[run.round_key+'|'+run.period_start].length+' corrections',()=>emailCorrections(run,st.rebuilt[run.round_key+'|'+run.period_start])):null,
+              run.email?btn('b4',{style:{padding:'7px 12px',fontSize:'12px'}},'📧 Email '+run.email+' bills',()=>emailRun(run)):null):null,
             run.print?h('div',{style:{display:'flex',gap:'6px',marginTop:'6px',flexWrap:'wrap'}},
               btn('b1',{style:{padding:'7px 12px',fontSize:'12px'}},'🖨 Print '+run.print+' here',async()=>{try{printSnapshots(await getPrintSnaps(run),true);}catch(e){alert('⚠ '+e.message);}}),
               (st.driverEmail||'').trim()?btn('b4',{style:{padding:'7px 12px',fontSize:'12px'}},'📤 Send to driver',async()=>{

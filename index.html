@@ -2481,8 +2481,8 @@ function rBilling(){
             (rows||[]).forEach(r=>{
               if(isDriver()&&r.round_key!=='round-2')return;
               const k=r.round_key+'|'+r.period_start;
-              if(!map[k])map[k]={round_key:r.round_key,period_start:r.period_start,period_label:r.period_label,total:0,print:0};
-              map[k].total++; if(r.delivery==='print')map[k].print++;
+              if(!map[k])map[k]={round_key:r.round_key,period_start:r.period_start,period_label:r.period_label,total:0,print:0,email:0};
+              map[k].total++; if(r.delivery==='print')map[k].print++; else if(r.delivery==='email')map[k].email++;
             });
             st.savedRuns=Object.values(map).sort((a,b)=>b.period_start.localeCompare(a.period_start)).slice(0,12);render();
           })
@@ -2492,6 +2492,31 @@ function rBilling(){
         const rows=await loadInvoices('kind=eq.round&round_key=eq.'+run.round_key+'&period_start=eq.'+run.period_start+'&delivery=eq.print&select=*');
         const order={};st.customers.forEach(c=>{order[String(c.id)]=c.listOrder||0;});
         return (rows||[]).sort((a,b)=>(order[a.customer_id]||0)-(order[b.customer_id]||0));
+      };
+      // Email the saved bills (exactly as they stood before the close) to every
+      // email customer on this run — e.g. if the round was closed before emailing.
+      const emailRun=async(run)=>{
+        if(!confirm('Email '+run.email+' saved bills for '+roundLabel(run.round_key)+' ('+(run.period_label||'')+')?\n\nEach customer gets their bill exactly as it was before the cycle closed.'))return;
+        try{
+          const rows=await loadInvoices('kind=eq.round&round_key=eq.'+run.round_key+'&period_start=eq.'+run.period_start+'&delivery=eq.email&select=*');
+          const biz=st.bizDetails; let sent=0; const failed=[];
+          for(const r of (rows||[])){
+            const c=st.customers.find(x=>String(x.id)===String(r.customer_id));
+            const to=((c&&c.email)||r.customer_email||'').trim();
+            if(!to||!r.email_html){failed.push(r.customer_name+' (no email)');continue;}
+            toast('📧 Emailing '+(sent+failed.length+1)+' of '+rows.length+'…');
+            try{
+              const resp=await fetch('/.netlify/functions/send-email',{method:'POST',headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({to,subject:(biz.name||'C J Torode')+' — Invoice '+(r.period_label||''),html:r.email_html,text:r.email_text||'',
+                  from:'craigpapers@newsagentdelivr.com',fromName:biz.name||'C J Torode Newsagent'})});
+              if(!resp.ok){const d=await resp.json().catch(()=>({}));throw new Error(d.error||resp.status);}
+              sent++;
+            }catch(e){failed.push(r.customer_name+' ('+e.message+')');}
+            await new Promise(res=>setTimeout(res,700)); // stay under Resend's rate limit
+          }
+          if(failed.length) alert('✓ Emailed '+sent+' bills.\n\n⚠ Not sent:\n'+failed.join('\n'));
+          else toast('✓ Emailed all '+sent+' bills');
+        }catch(e){alert('⚠ '+e.message);}
       };
       return h('div',{className:'card',style:{marginBottom:'18px'}},
         h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:'8px',flexWrap:'wrap'}},
@@ -2504,7 +2529,9 @@ function rBilling(){
         :!runs.length?h('div',{style:{fontSize:'13px',color:'#aaa',marginTop:'8px'}},'No saved runs yet — the first one appears when you next close a cycle.')
         :h('div',{style:{marginTop:'8px'}},...runs.map(run=>h('div',{style:{padding:'10px 0',borderBottom:'1px solid #e8e0d0'}},
             h('div',{style:{fontWeight:'bold',fontSize:'14px'}},roundLabel(run.round_key)+' — '+(run.period_label||fds(run.period_start))),
-            h('div',{style:{fontSize:'12px',color:'#888'}},run.total+' invoices · '+run.print+' printed'),
+            h('div',{style:{fontSize:'12px',color:'#888'}},run.total+' invoices · '+run.email+' email · '+run.print+' printed'),
+            run.email&&!isDriver()?h('div',{style:{marginTop:'6px'}},
+              btn('b4',{style:{padding:'7px 12px',fontSize:'12px'}},'📧 Email '+run.email+' bills',()=>emailRun(run))):null,
             run.print?h('div',{style:{display:'flex',gap:'6px',marginTop:'6px',flexWrap:'wrap'}},
               btn('b1',{style:{padding:'7px 12px',fontSize:'12px'}},'🖨 Print '+run.print+' here',async()=>{try{printSnapshots(await getPrintSnaps(run),true);}catch(e){alert('⚠ '+e.message);}}),
               (st.driverEmail||'').trim()?btn('b4',{style:{padding:'7px 12px',fontSize:'12px'}},'📤 Send to driver',async()=>{
@@ -4354,7 +4381,7 @@ function rShop(){
     // Camera scan helper (uses Anthropic Vision API if available)
     const doScan = async () => {
       const inp = document.createElement('input');
-      inp.type = 'file'; inp.accept = 'image/*';
+      inp.type = 'file'; inp.accept = 'image/*'; inp.capture = 'environment';
       inp.onchange = async e => {
         const file = e.target.files[0]; if(!file) return;
         const toastEl = document.getElementById('scan-toast');

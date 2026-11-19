@@ -4452,7 +4452,7 @@ function rShop(){
     // Camera scan helper (uses Anthropic Vision API if available)
     const doScan = async () => {
       const inp = document.createElement('input');
-      inp.type = 'file'; inp.accept = 'image/*'; inp.capture = 'environment';
+      inp.type = 'file'; inp.accept = 'image/*'; // no 'capture' — lets iPhone offer Photo Library as well as the camera
       inp.onchange = async e => {
         const file = e.target.files[0]; if(!file) return;
         const toastEl = document.getElementById('scan-toast');
@@ -4486,11 +4486,14 @@ function rShop(){
           const apiKey = localStorage.getItem('cjt_anthropicKey');
           // Note: scan now goes via Netlify function — API key stored server-side
           try {
-            const resp = await fetch('/.netlify/functions/scan', {
+            // Claude Sonnet 4.5 retires 30 Nov 2026 — use the current model, and
+            // fall back to the old one only if the new one is rejected.
+            const SCAN_MODELS=['claude-sonnet-5','claude-sonnet-4-5'];
+            const scanOnce = (SCAN_MODEL) => fetch('/.netlify/functions/scan', {
               method:'POST',
               headers:{'Content-Type':'application/json'},
               body: JSON.stringify({
-                model:'claude-sonnet-4-5',
+                model:SCAN_MODEL,
                 max_tokens:4000,
                 messages:[{
                   role:'user',
@@ -4873,7 +4876,13 @@ Use null for any value you cannot read clearly. Never invent or guess a price �
                 }]
               })
             });
-            const rawText = await resp.text();
+            let resp, rawText;
+            for(let mi=0;mi<SCAN_MODELS.length;mi++){
+              resp = await scanOnce(SCAN_MODELS[mi]);
+              rawText = await resp.text();
+              const modelProblem=(resp.status===404||resp.status===400)&&/model/i.test(rawText);
+              if(resp.ok||!modelProblem) break;
+            }
             if(!resp.ok){ throw new Error('Scan error '+resp.status+': '+rawText.slice(0,200)); }
             let data;
             try { data = JSON.parse(rawText); } catch(e) { throw new Error('Bad response: ' + rawText.slice(0,200)); }
